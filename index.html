@@ -766,17 +766,8 @@ button:focus-visible,input:focus-visible,[role="switch"]:focus-visible{outline:2
       <div class="duel-status" id="duelStatus"></div>
       <div id="duelLobby">
         <div id="duelPre">
-          <div class="lbl" data-i18n="duel_mode">РЕЖИМ ДУЭЛИ</div>
-          <div class="duel-modes" id="duelModes">
-            <button class="duel-mode on" data-m="bac"><span class="mat">style</span><b data-i18n="d_bac">Баккара</b><small>Punto Banco • 8 колод</small></button>
-            <button class="duel-mode" data-m="rou"><span class="mat">casino</span><b data-i18n="d_rou">Рулетка</b><small>European • зеро</small></button>
-            <button class="duel-mode" data-m="pok"><span class="mat">groups</span><b data-i18n="d_pok">Покер</b><small>Heads-Up Hold'em</small></button>
-          </div>
-          <div class="rewards-sub" id="duelModeHint" style="margin:.4rem 0"></div>
-          <div class="lbl"><span data-i18n="bet">СТАВКА</span></div>
-          <div class="bet-quick" id="duelStakeChips"><button class="bet-q on" data-v="50">50</button><button class="bet-q" data-v="100">100</button><button class="bet-q" data-v="250">250</button><button class="bet-q" data-v="500">500</button></div>
-          <div style="display:none"><div class="bet-row"><button class="btn btn-s btn-sm" id="duelDn">−</button><input id="duelStakeIn" type="number" value="50" min="1" step="10" /><button class="btn btn-s btn-sm" id="duelUp">+</button></div></div>
-          <button class="btn btn-p btn-lg" id="duelFindBtn" style="margin-top:.6rem"><span class="mat">search</span><span data-i18n="duel_find">ИГРАТЬ ОНЛАЙН</span></button>
+          <button class="btn btn-p btn-lg" id="duelCreateBtn" style="margin-top:.2rem"><span class="mat">add</span><span data-i18n="duel_create">Создать лобби</span></button>
+          <button class="btn btn-s btn-lg" id="duelFindBtn" style="margin-top:.4rem"><span class="mat">search</span><span data-i18n="duel_find">НАЙТИ ИГРУ</span></button>
           <button class="btn btn-s btn-lg" id="duelCancelBtn" style="display:none;margin-top:.4rem"><span data-i18n="duel_cancel">Отмена</span></button>
           <div class="bac-versus" id="duelFindStatus"></div>
           <div class="rewards-sub" style="margin-top:.4rem" data-i18n="duel_hint">Победа ×1.9 • ничья - возврат ставки</div>
@@ -795,6 +786,16 @@ button:focus-visible,input:focus-visible,[role="switch"]:focus-visible{outline:2
       <div class="lbl"><span data-i18n="duel_lobby">ЛОББИ</span></div>
       <div class="duel-vs"><b id="duelVsMe">…</b><span>⚔️</span><b id="duelVsOpp">…</b></div>
       <div id="duelCfgHost">
+        <div class="lbl" data-i18n="duel_mode">РЕЖИМ ДУЭЛИ</div>
+        <div class="duel-modes" id="duelModes">
+          <button class="duel-mode on" data-m="bac"><span class="mat">style</span><b data-i18n="d_bac">Баккара</b><small>Punto Banco • 8 колод</small></button>
+          <button class="duel-mode" data-m="rou"><span class="mat">casino</span><b data-i18n="d_rou">Рулетка</b><small>European • зеро</small></button>
+          <button class="duel-mode" data-m="pok"><span class="mat">groups</span><b data-i18n="d_pok">Покер</b><small>Heads-Up Hold'em</small></button>
+        </div>
+        <div class="rewards-sub" id="duelModeHint" style="margin:.4rem 0"></div>
+        <div class="lbl"><span data-i18n="bet">СТАВКА</span></div>
+        <div class="bet-quick" id="duelStakeChips"><button class="bet-q on" data-v="50">50</button><button class="bet-q" data-v="100">100</button><button class="bet-q" data-v="250">250</button><button class="bet-q" data-v="500">500</button></div>
+        <div style="display:none"><div class="bet-row"><button class="btn btn-s btn-sm" id="duelDn">−</button><input id="duelStakeIn" type="number" value="50" min="1" step="10" /><button class="btn btn-s btn-sm" id="duelUp">+</button></div></div>
         <div class="bac-versus" id="duelReadyState"></div>
         <button class="btn btn-p btn-lg" id="duelStartBtn" style="margin-top:.6rem"><span class="mat">play_arrow</span><span data-i18n="duel_start">НАЧАТЬ ИГРУ</span></button>
       </div>
@@ -3162,7 +3163,7 @@ Object.assign(I18N.ru,{app_upd:'Вышла новая версия - обнов�
 Object.assign(I18N.en,{app_upd:'New version available - refresh the page'});
 Object.assign(I18N.uk,{app_upd:'Вийшла нова версія - онови сторінку'});
 }catch(e){}
-const APP_VER='8.1';
+const APP_VER='8.6';
 function appVerCheck(){
   try{
     fetch(location.href.split('#')[0],{cache:'no-store'}).then(r=>r.text()).then(txt=>{
@@ -4077,9 +4078,9 @@ Object.assign(I18N.en,{duel_server:'SIGNALING SERVER',duel_srv_bad:'Check addres
 Object.assign(I18N.uk,{duel_server:'СЕРВЕР СИГНАЛІНГУ',duel_srv_bad:'Перевір адресу: хост:порт/шлях',duel_srv_ok:'Свій сервер збережено',duel_srv_reset_done:'Скинуто на хмару',duel_srv_cur_cloud:'Сервер: хмара PeerJS (за замовчуванням)',duel_srv_cur:'Сервер: {h}'});
 }catch(e){}
 try{
-Object.assign(I18N.ru,{duel_find:'ИГРАТЬ ОНЛАЙН',duel_cancel:'Отмена',duel_searching:'Ищем соперника…',duel_found:'Соперник найден!',duel_fb_setup:'Онлайн не подключён - проверь интернет'});
-Object.assign(I18N.en,{duel_find:'PLAY ONLINE',duel_cancel:'Cancel',duel_searching:'Finding opponent…',duel_found:'Opponent found!',duel_fb_setup:'Online is not connected - check internet'});
-Object.assign(I18N.uk,{duel_find:'ГРАТИ ОНЛАЙН',duel_cancel:'Скасувати',duel_searching:'Шукаємо суперника…',duel_found:'Суперника знайдено!',duel_fb_setup:'Онлайн не підключено - перевір інтернет'});
+Object.assign(I18N.ru,{duel_find:'НАЙТИ ИГРУ',duel_noroom:'Нет свободных игр - создай лобби',duel_cancel:'Отмена',duel_searching:'Ищем соперника…',duel_found:'Соперник найден!',duel_fb_setup:'Онлайн не подключён - проверь интернет'});
+Object.assign(I18N.en,{duel_find:'FIND GAME',duel_noroom:'No free games - create a lobby',duel_cancel:'Cancel',duel_searching:'Finding opponent…',duel_found:'Opponent found!',duel_fb_setup:'Online is not connected - check internet'});
+Object.assign(I18N.uk,{duel_find:'ЗНАЙТИ ГРУ',duel_noroom:'Немає вільних ігор - створи лобі',duel_cancel:'Скасувати',duel_searching:'Шукаємо суперника…',duel_found:'Суперника знайдено!',duel_fb_setup:'Онлайн не підключено - перевір інтернет'});
 }catch(e){}
 try{
 Object.assign(I18N.ru,{nav_bj:'21',game_bj:'Блэкджек',bj_title:'БЛЭКДЖЕК • ДО 21',bj_dealer:'Дилер',bj_you:'Вы',bj_deal:'РАЗДАТЬ',bj_hit:'Ещё',bj_stand:'Хватит',bj_double:'Удвоить',bj_ins_q:'У дилера туз. Страховка за {n}?',bj_ins_yes:'Взять',bj_ins_no:'Без',bj_even_q:'Блэкджек! Забрать 1:1 сразу или играть?',bj_take:'Забрать',bj_play_on:'Играть',bj_win:'Победа +{n}',bj_lose:'−{n}',bj_push:'Ничья - возврат',bj_bust:'Перебор! −{n}',bj_dealer_bust:'Дилер перебрал! +{n}',bj_bj:'БЛЭКДЖЕК! +{n}',bj_ins_win:'Страховка сыграла +{n}',bj_shoe:'Шу',bj_rules:'Блэкджек платит 3:2 • дилер стоит на 17 • страховка 2:1 • дабл - одна карта • сплитов нет',bj_reshuffle:'Шу закончился - новый замес (6 колод)'});
@@ -4164,15 +4165,78 @@ function duelHbStop(){try{clearInterval(DU.hbTimer)}catch(e){}DU.hbTimer=null}
 const DUELS_VISIBLE=true;
 function duelFindStatus(m){const e=$('duelFindStatus');if(e)e.textContent=m||''}
 function duelMatchId(){try{let m=localStorage.getItem('gapera_match_id');if(!m){m='m'+Math.random().toString(36).slice(2,10);localStorage.setItem('gapera_match_id',m)}return m}catch(e){return 'm'+Math.random().toString(36).slice(2,10)}}
+function duelCreateLobby(){
+  try{Sound.click()}catch(e){}
+  if(DU.searching||DU.started||DU.role)return;
+  if(!duelFbReady()){sn(t('duel_fb_setup'));return}
+  const me=duelMe();
+  DU.searching=false;
+  DU.sigId='p'+Math.random().toString(36).slice(2,10);
+  DU.role='host';DU.mode=DU.mode||'bac';
+  DU.myStake=Math.max(1,clampBet('duelStakeIn'));
+  DU.opp={name:'?',ava:'?'};
+  DU.myReady=false;DU.oppReady=false;DU.chat=[];
+  try{duelChatRender()}catch(e){}
+  const ref=fbDb.ref('gapera/rooms').push({
+    mode:DU.mode,stake:DU.myStake,status:'open',
+    host:{id:DU.sigId,name:me.name,ava:me.ava,tgOwner:accountId()||null},
+    guest:null,ts:firebase.database.ServerValue.TIMESTAMP
+  });
+  DU.roomId=ref.key;
+  try{fbDb.ref('gapera/rooms/'+DU.roomId).onDisconnect().remove()}catch(e){}
+  duelFbHeartbeat();
+  DU.fbRoomRef=fbDb.ref('gapera/rooms/'+DU.roomId);
+  DU.fbRoomRef.on('value',(snap)=>{
+    if(DU.role!=='host'||DU.started||DU.roomId==null)return;
+    let r=null;try{r=snap.val()}catch(e){}
+    if(!r)return;
+    if(r.guest&&r.guest.id){
+      DU.opp={name:String(r.guest.name||'?').slice(0,14),ava:String(r.guest.ava||'?').slice(0,2)};
+      duelRender();
+    }else if(!DU.started){DU.opp={name:'?',ava:'?'};duelRender()}
+  });
+  duelFbEnter();
+  try{fbDb.ref('gapera/rooms/'+DU.roomId+'/status').set('open')}catch(e){}
+  duelRender();
+}
+function duelRoomSync(){
+  try{
+    if(DU.role!=='host'||!DU.roomId||DU.started||!fbDb)return;
+    fbDb.ref('gapera/rooms/'+DU.roomId).update({mode:DU.mode,stake:DU.myStake,ts:firebase.database.ServerValue.TIMESTAMP});
+  }catch(e){}
+}
+function duelFbFindAny(){
+  if(!DU.searching)return;
+  fbDb.ref('gapera/rooms').once('value').then(snap=>{
+    if(!DU.searching)return;
+    let rooms={};
+    try{rooms=snap.val()||{}}catch(e){rooms={}}
+    const now=Date.now();
+    const tg=accountId();
+    let best=null,bestTs=Infinity;
+    Object.keys(rooms).forEach(id=>{
+      const r=rooms[id]||{};
+      if(r.status==='open'&&r.host&&r.host.id!==DU.sigId&&!(tg&&r.host.tgOwner&&r.host.tgOwner===tg)&&!r.guest&&(now-(+r.ts||0))<45000&&(r.mode==='bac'||r.mode==='rou'||r.mode==='pok')&&+r.stake>=1){
+        if((+r.ts||0)<bestTs){bestTs=+r.ts;best=id}
+      }
+    });
+    if(best){
+      const r=rooms[best];
+      duelFbJoinRoom(best,r.mode,+r.stake);
+    }else{
+      duelFindStatus(t('duel_noroom'));
+      DU.searching=false;duelFindUI();duelRender();
+    }
+  }).catch(()=>{if(DU.searching)setTimeout(()=>{if(DU.searching)duelFbFindAny()},3000)});
+}
 function duelFind(){
   try{Sound.click()}catch(e){}
   if(DU.searching||DU.started||DU.role)return;
   if(!duelFbReady()){sn(t('duel_fb_setup'));return}
-  const stake=Math.max(1,clampBet('duelStakeIn'));
   DU.searching=true;DU.sigId='p'+Math.random().toString(36).slice(2,10);
   duelFindStatus(t('duel_searching'));
   duelFindUI();duelRender();
-  duelFbFind(DU.mode,stake);
+  duelFbFindAny();
 }
 function duelFindUI(){
   const f=$('duelFindBtn'),c=$('duelCancelBtn');
@@ -4335,18 +4399,6 @@ function duelFbEnter(){
   try{fbDb.ref('gapera/rooms/'+DU.roomId+'/status').set('full')}catch(e){}
   duelFindStatus(t('duel_found'));
   duelSetStatus('dst_conn');duelRender();
-  if(DU.role==='host'){
-    setTimeout(()=>{
-      try{
-        if(DU.role!=='host'||DU.link!=='fb'||DU.started)return;
-        fbDb.ref('gapera/rooms/'+DU.roomId+'/guest').once('value').then(s=>{
-          let g=null;try{g=s.val()}catch(e){}
-          if(!g||!g.id){duelFindStatus(t('duel_searching'));duelRender();return}
-          duelBeginMatch();
-        }).catch(()=>{try{duelBeginMatch()}catch(e){}});
-      }catch(e){}
-    },800);
-  }
 }
 function duelFbSend(o){
   if(!DU.roomId||!fbDb)return;
@@ -4452,6 +4504,7 @@ try{
     try{Sound.click()}catch(e){}
     if(DU.started||DU.searching)return;
     DU.mode=b.dataset.m||'bac';
+    try{if(DU.role==='host'&&!DU.started){DU.oppReady=false;duelSendCfg();duelRoomSync();duelRender()}}catch(e){}
     duelRender();
   }));
   const _dl=$('duelLeave');if(_dl)_dl.addEventListener('click',function(){try{Sound.click()}catch(e){}duelLeave(true)});
@@ -4475,7 +4528,7 @@ try{
   const _pau=$('pokAmtUp');if(_pau)_pau.addEventListener('click',()=>{try{Sound.click()}catch(e){}const a=$('pokAmt');if(a)a.value=(parseInt(a.value)||1)+5});
   const _dsi=$('duelStakeIn');
   if(_dsi){
-    const cfgPush=()=>{try{if(DU.role==='host'&&!DU.started){DU.myStake=clampBet('duelStakeIn');DU.oppReady=false;duelSendCfg();duelRender()}}catch(e){}};
+    const cfgPush=()=>{try{if(DU.role==='host'&&!DU.started){DU.myStake=clampBet('duelStakeIn');DU.oppReady=false;duelSendCfg();duelRoomSync();duelRender()}}catch(e){}};
     _dsi.addEventListener('change',cfgPush);
     ['duelDn','duelUp'].forEach(id=>{const b=$(id);if(b)b.addEventListener('click',()=>setTimeout(cfgPush,0))});
   }
@@ -4492,6 +4545,7 @@ try{
   const _dci=$('duelChatIn');if(_dci)_dci.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();duelChatSend(e.target.value)}});
   document.querySelectorAll('#duelChatCard .chat-quick button').forEach(b=>b.addEventListener('click',()=>duelChatSend(t('duel_offer',{n:b.dataset.q}))));
   const _dfb=$('duelFindBtn');if(_dfb)_dfb.addEventListener('click',duelFind);
+  const _dcl=$('duelCreateBtn');if(_dcl)_dcl.addEventListener('click',duelCreateLobby);
   const _dcb=$('duelCancelBtn');if(_dcb)_dcb.addEventListener('click',duelCancelFind);
   document.querySelectorAll('#duelStakeChips .bet-q').forEach(b=>b.addEventListener('click',()=>{
     document.querySelectorAll('#duelStakeChips .bet-q').forEach(x=>x.classList.remove('on'));b.classList.add('on');
