@@ -1195,10 +1195,9 @@ const R_STRAIGHT_MULT=ROULETTE_EDGE/(1/rNums.length);
 function getUid(){
   try{if(TG&&TG.initDataUnsafe&&TG.initDataUnsafe.user&&TG.initDataUnsafe.user.id)return 'tg'+TG.initDataUnsafe.user.id}catch(e){}
   try{
-    let a=localStorage.getItem('gapera_anon_id');
-    if(!a){a='anon'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);localStorage.setItem('gapera_anon_id',a)}
-    return a;
-  }catch(e){return 'anon_fallback'}
+    if(!window.__gx)window.__gx='gx'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+    return window.__gx;
+  }catch(e){return 'gx_fallback'}
 }
 const SAVE_VERSION=9;
 const STORAGE_KEY='gapera_alpha61_v9_save_'+getUid();
@@ -1586,6 +1585,7 @@ function load(){
     setTimeout(markCloudReady,6000); 
   }else{cloudReady=true}
 }
+try{localStorage.removeItem('gapera_linked_tg');localStorage.removeItem('gapera_anon_id')}catch(e){}
 load();
 try{fbPullSave(false)}catch(e){}
 try{fbStarsPull()}catch(e){}
@@ -1644,7 +1644,7 @@ function rBal(){
 let fbStarsTimer=null,fbStarsBusy=false,fbStarsBusyT=null,fbStarsRetryT=null;
 function fbStarsPush(){
   if(!duelFbReady())return;
-  const id=effectiveTgId();if(!id)return;
+  const id=accountId();if(!id)return;
   clearTimeout(fbStarsTimer);
   fbStarsTimer=setTimeout(()=>{
     if(fbStarsBusy){try{clearTimeout(fbStarsRetryT)}catch(e){}fbStarsRetryT=setTimeout(()=>{try{fbStarsPush()}catch(e){}},1000);return}
@@ -1669,7 +1669,7 @@ function fbStarsPush(){
 }
 function fbStarsPull(){
   if(!duelFbReady())return;
-  const id=effectiveTgId();if(!id)return;
+  const id=accountId();if(!id)return;
   fbDb.ref('gapera/stars/'+id).once('value').then(snap=>{
     let cur=null;try{cur=snap.val()}catch(e){}
     if(cur&&typeof cur.v==='number'&&((cur.ts||0)>(S.savedAt||0))&&cur.v!==S.bal){
@@ -1681,13 +1681,13 @@ let fbStarsWatching=false;
 function fbClaimWrite(kind,val){
   try{
     if(!duelFbReady())return;
-    const id=effectiveTgId();if(!id)return;
+    const id=accountId();if(!id)return;
     fbDb.ref('gapera/claimed/'+id+'/'+kind).set(val);
   }catch(e){}
 }
 function fbStarsWatch(){
   if(fbStarsWatching||!duelFbReady())return;
-  const id=effectiveTgId();if(!id)return;
+  const id=accountId();if(!id)return;
   fbStarsWatching=true;
   try{
     fbDb.ref('gapera/stars/'+id).on('value',snap=>{
@@ -3065,11 +3065,9 @@ function duelMe(){
 }
 function duelSetText(id,v){const e=$(id);if(e)e.textContent=v}
 function duelSetStatus(k,pr){DU.st={k:k,p:pr||null};const el=$('duelStatus');if(el){try{el.textContent=t(k,pr)}catch(e){el.textContent=k}}}
-function duelTgId(){try{if(TG&&TG.initDataUnsafe&&TG.initDataUnsafe.user&&TG.initDataUnsafe.user.id)return 'tg'+TG.initDataUnsafe.user.id}catch(e){}return null}
-function linkedTg(){try{return localStorage.getItem('gapera_linked_tg')||null}catch(e){return null}}
-function effectiveTgId(){return duelTgId()||linkedTg()}
+function accountId(){try{if(TG&&TG.initDataUnsafe&&TG.initDataUnsafe.user&&TG.initDataUnsafe.user.id)return 'tg'+TG.initDataUnsafe.user.id}catch(e){}return null}
 let fbSaveTimer=null;
-function fbSavePath(){const id=effectiveTgId();return id?('gapera/saves/'+id):null}
+function fbSavePath(){const id=accountId();return id?('gapera/saves/'+id):null}
 function fbPushSave(now){
   if(!duelFbReady())return;
   const p=fbSavePath();if(!p)return;
@@ -4027,6 +4025,11 @@ Object.assign(I18N.ru,{nav_plinko:'Плинко',game_plinko:'Плинко',pl_l
 Object.assign(I18N.en,{nav_plinko:'Plinko',game_plinko:'Plinko',pl_low:'Low',pl_med:'Medium',pl_high:'High',pl_drop:'DROP',pl_rules:'Ball bounces a fair 50/50 on every peg • the bin pays the multiplier'});
 Object.assign(I18N.uk,{nav_plinko:'Плінко',game_plinko:'Плінко',pl_low:'Низький',pl_med:'Середній',pl_high:'Високий',pl_drop:'КИНУТИ',pl_rules:'Кулька чесно стрибає 50/50 на кожному кілочку • лунка платить множник'});
 }catch(e){}
+try{
+Object.assign(I18N.ru,{duel_need_tg:'Онлайн-дуэли только из Telegram'});
+Object.assign(I18N.en,{duel_need_tg:'Online duels only from Telegram'});
+Object.assign(I18N.uk,{duel_need_tg:'Онлайн-дуелі тільки з Telegram'});
+}catch(e){}
 function duelModeName(m){return t(m==='rou'?'d_rou':(m==='pok'?'d_pok':'d_bac'))}
 function duelSendCfg(){duelSend({t:'lobby_cfg',mode:DU.mode,stake:DU.myStake})}
 // Хост жмёт «Начать игру» в лобби: ставка читается из настроек лобби
@@ -4116,6 +4119,7 @@ function duelMatchId(){try{let m=localStorage.getItem('gapera_match_id');if(!m){
 function duelFind(){
   try{Sound.click()}catch(e){}
   if(DU.searching||DU.started||DU.role)return;
+  if(!accountId()){sn(t('duel_need_tg'));return}
   if(!duelFbReady()){sn(t('duel_fb_setup'));return}
   const stake=Math.max(1,clampBet('duelStakeIn'));
   DU.searching=true;DU.sigId=duelMatchId();
@@ -4151,7 +4155,7 @@ function duelFbFind(mode,stake){
     if(!DU.searching)return;
     try{rooms=snap.val()||{}}catch(e){rooms={}}
     const now=Date.now();
-    const tg=effectiveTgId();
+    const tg=accountId();
     let best=null,bestTs=Infinity;
     Object.keys(rooms).forEach(id=>{
       const r=rooms[id]||{};
@@ -4183,7 +4187,7 @@ function duelFbMakeRoom(mode,stake){
   const me=duelMe();
   const ref=fbDb.ref('gapera/rooms').push({
     mode:mode,stake:stake,status:'open',
-    host:{id:DU.sigId,name:me.name,ava:me.ava,tgOwner:effectiveTgId()||null},
+    host:{id:DU.sigId,name:me.name,ava:me.ava,tgOwner:accountId()||null},
     guest:null,ts:firebase.database.ServerValue.TIMESTAMP
   });
   DU.roomId=ref.key;DU.role='host';DU.mode=mode;DU.myStake=stake;
