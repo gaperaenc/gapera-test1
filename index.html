@@ -1598,6 +1598,7 @@ try{fbStarsWatch()}catch(e){}
 try{fbNetWatch()}catch(e){}
 try{lockWatch()}catch(e){}
 try{lockOverlay(false)}catch(e){}
+setTimeout(function(){try{fbPullSave(false)}catch(e){}try{fbStarsPull()}catch(e){}try{fbStarsWatch()}catch(e){}try{fbNetWatch()}catch(e){}if(!lockHeld&&!lockDenied){try{lockWatch()}catch(e){}}try{lockOverlay(false)}catch(e){}},1200);
 rTheme();
 function flushSave(){save(true);try{lockRelease()}catch(e){}}
 window.addEventListener('pagehide',flushSave);
@@ -1701,7 +1702,7 @@ function fbStarsPull(){
   const id=accountId();if(!id)return;
   fbDb.ref('gapera/stars/'+id).once('value').then(snap=>{
     let cur=null;try{cur=snap.val()}catch(e){}
-    if(cur&&typeof cur.v==='number'&&((cur.ts||0)>(S.savedAt||0))&&cur.v!==S.bal){
+    if(cur&&typeof cur.v==='number'&&cur.v!==S.bal&&(((cur.ts||0)>(S.savedAt||0))||Date.now()-(S.savedAt||0)>10000)){
       S.bal=Math.floor(cur.v);fbStarsSyncedV=S.bal;save();rBal();
     }
   }).catch(()=>{});
@@ -1722,7 +1723,7 @@ function fbStarsWatch(){
       let cur=null;try{cur=snap.val()}catch(e){}
       if(!cur||typeof cur.v!=='number')return;
       const v=Math.floor(cur.v);
-      if(v!==S.bal){S.bal=v;fbStarsSyncedV=v;save();rBal()}
+      if(v!==S.bal&&Date.now()-(S.savedAt||0)>10000){S.bal=v;fbStarsSyncedV=v;save();rBal()}
     });
     fbDb.ref('gapera/claimed/'+id).on('value',snap=>{
       let c=null;try{c=snap.val()}catch(e){}
@@ -3161,7 +3162,7 @@ Object.assign(I18N.ru,{app_upd:'Вышла новая версия - обнов�
 Object.assign(I18N.en,{app_upd:'New version available - refresh the page'});
 Object.assign(I18N.uk,{app_upd:'Вийшла нова версія - онови сторінку'});
 }catch(e){}
-const APP_VER='8';
+const APP_VER='8.1';
 function appVerCheck(){
   try{
     fetch(location.href.split('#')[0],{cache:'no-store'}).then(r=>r.text()).then(txt=>{
