@@ -1641,7 +1641,7 @@ function rBal(){
   setTimeout(()=>b.classList.remove('bump'),150);
   try{fbStarsPush()}catch(e){}
 }
-let fbStarsTimer=null,fbStarsBusy=false,fbStarsBusyT=null,fbStarsRetryT=null;
+let fbStarsTimer=null,fbStarsBusy=false,fbStarsBusyT=null,fbStarsRetryT=null,fbStarsSyncedV=null;
 function fbStarsPush(){
   if(!duelFbReady())return;
   const id=accountId();if(!id)return;
@@ -1652,6 +1652,7 @@ function fbStarsPush(){
     try{clearTimeout(fbStarsBusyT)}catch(e){}
     fbStarsBusyT=setTimeout(()=>{fbStarsBusy=false},15000);
     const v=Math.floor(S.bal),ts=S.savedAt||Date.now();
+    if(fbStarsSyncedV!==null&&v===fbStarsSyncedV)return;
     try{
       fbDb.ref('gapera/stars/'+id).transaction(cur=>{
         if(cur&&((cur.ts||0)>ts))return;
@@ -1659,9 +1660,10 @@ function fbStarsPush(){
       },(err,ok,snap)=>{
         fbStarsBusy=false;
         try{clearTimeout(fbStarsBusyT)}catch(e){}
+        if(ok)fbStarsSyncedV=v;
         try{
           const cur=snap?snap.val():null;
-          if(cur&&typeof cur.v==='number'&&cur.v!==S.bal&&((cur.ts||0)>ts)){S.bal=Math.floor(cur.v);save();rBal()}
+          if(cur&&typeof cur.v==='number'&&cur.v!==S.bal&&((cur.ts||0)>ts)){S.bal=Math.floor(cur.v);fbStarsSyncedV=S.bal;save();rBal()}
         }catch(e){}
       });
     }catch(e){fbStarsBusy=false}
@@ -1673,7 +1675,7 @@ function fbStarsPull(){
   fbDb.ref('gapera/stars/'+id).once('value').then(snap=>{
     let cur=null;try{cur=snap.val()}catch(e){}
     if(cur&&typeof cur.v==='number'&&((cur.ts||0)>(S.savedAt||0))&&cur.v!==S.bal){
-      S.bal=Math.floor(cur.v);save();rBal();
+      S.bal=Math.floor(cur.v);fbStarsSyncedV=S.bal;save();rBal();
     }
   }).catch(()=>{});
 }
@@ -1694,7 +1696,7 @@ function fbStarsWatch(){
       let cur=null;try{cur=snap.val()}catch(e){}
       if(!cur||typeof cur.v!=='number')return;
       const v=Math.floor(cur.v);
-      if(v!==S.bal){S.bal=v;save();rBal()}
+      if(v!==S.bal){S.bal=v;fbStarsSyncedV=v;save();rBal()}
     });
     fbDb.ref('gapera/claimed/'+id).on('value',snap=>{
       let c=null;try{c=snap.val()}catch(e){}
@@ -1708,6 +1710,13 @@ function fbStarsWatch(){
         if(rs>(S.daily.streak||0))S.daily.streak=rs;
         save();dailyTick();
       }
+    });
+    const sp=fbSavePath();
+    if(sp)fbDb.ref(sp+'/state/bal').on('value',snap=>{
+      let bv;try{bv=snap.val()}catch(e){return}
+      if(bv===null||bv===undefined)return;
+      const nb=Math.floor(Number(bv));
+      if(Number.isFinite(nb)&&nb>=0&&nb!==S.bal){S.bal=nb;fbStarsSyncedV=nb;save();rBal()}
     });
   }catch(e){fbStarsWatching=false}
 }
@@ -3066,18 +3075,21 @@ function duelMe(){
 function duelSetText(id,v){const e=$(id);if(e)e.textContent=v}
 function duelSetStatus(k,pr){DU.st={k:k,p:pr||null};const el=$('duelStatus');if(el){try{el.textContent=t(k,pr)}catch(e){el.textContent=k}}}
 function accountId(){try{if(TG&&TG.initDataUnsafe&&TG.initDataUnsafe.user&&TG.initDataUnsafe.user.id)return 'tg'+TG.initDataUnsafe.user.id}catch(e){}return null}
-let fbSaveTimer=null;
+let fbSaveTimer=null,fbStateJson=null;
 function fbSavePath(){const id=accountId();return id?('gapera/saves/'+id):null}
 function fbPushSave(now){
   if(!duelFbReady())return;
   const p=fbSavePath();if(!p)return;
   clearTimeout(fbSaveTimer);
   fbSaveTimer=setTimeout(()=>{
+    let snap='';
+    try{const c=Object.assign({},S);delete c.savedAt;snap=JSON.stringify(c)}catch(e){snap=''}
+    if(snap&&snap===fbStateJson)return;
     try{
       fbDb.ref(p).transaction(cur=>{
         if(cur&&((cur.savedAt||0)>(S.savedAt||0)))return;
         return {state:S,savedAt:S.savedAt||Date.now()};
-      });
+      },(err,ok)=>{if(ok){try{fbStateJson=snap}catch(e){}}});
     }catch(e){}
   },now?100:400);
 }
@@ -3088,6 +3100,7 @@ function fbPullSave(forceMsg){
     let v=null;try{v=snap.val()}catch(e){}
     if(v&&v.state&&((v.savedAt||0)>(S.savedAt||0))){
       applyLoadedState(Object.assign({},v.state,{savedAt:v.savedAt}));
+      try{const c=Object.assign({},S);delete c.savedAt;fbStateJson=JSON.stringify(c)}catch(e){}
       writeLocal();renderAll();
     }
   }).catch(()=>{});
