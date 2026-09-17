@@ -520,11 +520,16 @@ button:focus-visible,input:focus-visible,[role="switch"]:focus-visible{outline:2
 .chat-q{padding:.3rem .6rem;border-radius:var(--sh-full);border:1px solid var(--ol-v);background:transparent;color:var(--on-sv);font:600 .7rem var(--f);cursor:pointer}
 .chat-q:active{transform:scale(.92)}
 .bet-q.on{background:var(--p);color:var(--on-p);border-color:var(--p)}
+#lockOverlay{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);place-items:center;padding:1.5rem}
+.lock-box{text-align:center;max-width:320px}
+.lock-t{font-weight:700;font-size:1.1rem;margin-bottom:.5rem}
+.lock-s{color:var(--on-sv);font-size:.85rem}
 .plinko-canvas{width:100%;height:300px;display:block;border-radius:var(--sh-l);border:1px solid var(--ol-v);background:radial-gradient(120% 110% at 50% 0%,#35855A,#1E5B3A 55%,#123722)}
   </style>
 </head>
 <body>
 
+<div id="lockOverlay" style="display:none"><div class="lock-box"><div class="lock-t" data-i18n="lock_title">Игра уже запущена на другом устройстве</div><div class="lock-s" data-i18n="lock_sub">Закрой её там - доступ откроется сам</div></div></div>
 <div class="topbar">
   <div class="topbar-left">
     <div class="topbar-row"><span class="topbar-name">Gapera</span><span class="topbar-beta" id="verBadge">АЛЬФА 8</span></div>
@@ -1590,6 +1595,8 @@ load();
 try{fbPullSave(false)}catch(e){}
 try{fbStarsPull()}catch(e){}
 try{fbStarsWatch()}catch(e){}
+try{fbNetWatch()}catch(e){}
+try{lockWatch()}catch(e){}
 rTheme();
 function flushSave(){save(true)}
 window.addEventListener('pagehide',flushSave);
@@ -1647,6 +1654,7 @@ function fbStarsPush(){
   const id=accountId();if(!id)return;
   clearTimeout(fbStarsTimer);
   fbStarsTimer=setTimeout(()=>{
+    if(lockDenied)return;
     if(fbStarsBusy){try{clearTimeout(fbStarsRetryT)}catch(e){}fbStarsRetryT=setTimeout(()=>{try{fbStarsPush()}catch(e){}},1000);return}
     fbStarsBusy=true;
     try{clearTimeout(fbStarsBusyT)}catch(e){}
@@ -3082,6 +3090,7 @@ function fbPushSave(now){
   const p=fbSavePath();if(!p)return;
   clearTimeout(fbSaveTimer);
   fbSaveTimer=setTimeout(()=>{
+    if(lockDenied)return;
     let snap='';
     try{const c=Object.assign({},S);delete c.savedAt;snap=JSON.stringify(c)}catch(e){snap=''}
     if(snap&&snap===fbStateJson)return;
@@ -3101,8 +3110,9 @@ function fbPullSave(forceMsg){
     if(v&&v.state&&((v.savedAt||0)>(S.savedAt||0))){
       applyLoadedState(Object.assign({},v.state,{savedAt:v.savedAt}));
       try{const c=Object.assign({},S);delete c.savedAt;fbStateJson=JSON.stringify(c)}catch(e){}
+      try{fbStarsSyncedV=null;fbStarsPush()}catch(e){}
       writeLocal();renderAll();
-    }
+    }else{try{fbPushSave(true)}catch(e){}try{fbStarsSyncedV=null;fbStarsPush()}catch(e){}}
   }).catch(()=>{});
 }
 try{
@@ -3115,13 +3125,30 @@ function appVerCheck(){
   try{
     fetch(location.href.split('#')[0],{cache:'no-store'}).then(r=>r.text()).then(txt=>{
       const m=/APP_VER='([^']+)'/.exec(txt||'');
-      if(m&&m[1]!==APP_VER){try{sn(t('app_upd'))}catch(e){}}
+      if(m&&m[1]!==APP_VER){
+        try{sn(t('app_upd'))}catch(e){}
+        setTimeout(()=>{try{if(DU.started&&!DU.over)return;location.reload()}catch(e){}},4000);
+      }
     }).catch(()=>{});
   }catch(e){}
 }
 try{setTimeout(appVerCheck,15000)}catch(e){}
 try{setInterval(appVerCheck,1800000)}catch(e){}
-function duelNetOK(){return duelFbReady()}
+let fbWasOnline=false;
+function fbNetWatch(){
+  if(!duelFbReady())return;
+  try{
+    fbDb.ref('.info/connected').on('value',snap=>{
+      let on=false;try{on=!!snap.val()}catch(e){}
+      if(on&&!fbWasOnline){
+        try{fbStarsSyncedV=null;fbStateJson=null}catch(e){}
+        try{fbPullSave()}catch(e){}
+        try{fbStarsPush()}catch(e){}
+      }
+      fbWasOnline=on;
+    });
+  }catch(e){}
+}
 function duelPeerOpts(){
   // На разных сетях прямое соединение режут NAT/файрволы - пробиваем через
   // TURN-релеи. Несколько независимых серверов: если один мёртв, сработает
@@ -4043,6 +4070,11 @@ Object.assign(I18N.ru,{duel_need_tg:'Онлайн-дуэли только из T
 Object.assign(I18N.en,{duel_need_tg:'Online duels only from Telegram'});
 Object.assign(I18N.uk,{duel_need_tg:'Онлайн-дуелі тільки з Telegram'});
 }catch(e){}
+try{
+Object.assign(I18N.ru,{lock_title:'Игра уже запущена на другом устройстве',lock_sub:'Закрой её там - доступ откроется сам'});
+Object.assign(I18N.en,{lock_title:'Game is already running on another device',lock_sub:'Close it there - access will open automatically'});
+Object.assign(I18N.uk,{lock_title:'Гра вже запущена на іншому пристрої',lock_sub:'Закрий її там - доступ відкриється сам'});
+}catch(e){}
 function duelModeName(m){return t(m==='rou'?'d_rou':(m==='pok'?'d_pok':'d_bac'))}
 function duelSendCfg(){duelSend({t:'lobby_cfg',mode:DU.mode,stake:DU.myStake})}
 // Хост жмёт «Начать игру» в лобби: ставка читается из настроек лобби
@@ -4298,6 +4330,51 @@ function duelFbCleanup(){
   }catch(e){}
   DU.searching=false;DU.roomId=null;DU.role=null;DU.link=null;DU.fbHadGuest=false;
 }
+let lockSid=null,lockHeld=false,lockDenied=false,lockHbT=null;
+function lockPath(){const id=accountId();if(!id)return null;return 'gapera/lock/'+id}
+function lockSidGet(){
+  if(lockSid)return lockSid;
+  try{lockSid=sessionStorage.getItem('gapera_lock_sid')||''}catch(e){lockSid=''}
+  if(!lockSid){lockSid='s'+Math.random().toString(36).slice(2,12);try{sessionStorage.setItem('gapera_lock_sid',lockSid)}catch(e){}}
+  return lockSid;
+}
+function lockOverlay(on){try{const e=$('lockOverlay');if(e)e.style.display=on?'grid':'none'}catch(e2){}}
+function lockHbStart(){
+  lockHbStop();
+  const p=lockPath();if(!p)return;
+  const beat=()=>{try{if(lockHeld)fbDb.ref(p).set({sid:lockSidGet(),ts:fbNow()})}catch(e){}};
+  beat();lockHbT=setInterval(beat,10000);
+  try{fbDb.ref(p).onDisconnect().remove()}catch(e){}
+}
+function lockHbStop(){try{clearInterval(lockHbT)}catch(e){}lockHbT=null}
+function fbPullAll(){try{fbPullSave()}catch(e){}try{fbStarsPull()}catch(e){}}
+function lockAcquire(){
+  if(!duelFbReady())return;
+  const p=lockPath();if(!p)return;
+  const sid=lockSidGet();
+  fbDb.ref(p).transaction(cur=>{
+    if(!cur)return {sid:sid,ts:fbNow()};
+    if(cur.sid===sid)return {sid:sid,ts:fbNow()};
+    if((fbNow()-(+cur.ts||0))>40000)return {sid:sid,ts:fbNow()};
+  },(err,ok,snap)=>{
+    let v=null;try{v=snap?snap.val():null}catch(e){}
+    if(ok&&v&&v.sid===lockSidGet()){lockHeld=true;lockDenied=false;lockOverlay(false);lockHbStart();fbPullAll()}
+    else{lockHeld=false;lockDenied=true;lockHbStop();lockOverlay(true)}
+  });
+}
+function lockWatch(){
+  const p=lockPath();if(!p||!duelFbReady())return;
+  try{
+    fbDb.ref(p).on('value',snap=>{
+      let v=null;try{v=snap.val()}catch(e){return}
+      const sid=lockSidGet();
+      if(v&&v.sid===sid){if(!lockHeld){lockHeld=true;lockDenied=false;lockOverlay(false);lockHbStart();fbPullAll()}return}
+      if(!v){lockHeld=false;lockAcquire();return}
+      lockHeld=false;lockDenied=true;lockHbStop();lockOverlay(true);
+    });
+  }catch(e){}
+}
+function duelNetOK(){return duelFbReady()}
 function duelCreate(){
   try{Sound.click()}catch(e){}
   if(!duelNetOK()){duelSetStatus('dst_err');return}
