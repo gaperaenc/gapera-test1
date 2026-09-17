@@ -935,16 +935,6 @@ button:focus-visible,input:focus-visible,[role="switch"]:focus-visible{outline:2
       <div class="lbl"><span data-i18n="ach_title">ДОСТИЖЕНИЯ</span> • <span id="achCount">0/16</span></div>
       <div class="ach-grid" id="achGrid"></div>
     </div>
-    <div class="card">
-      <div class="lbl" data-i18n="sync_title">СИНХРОНИЗАЦИЯ</div>
-      <div class="bac-versus" id="syncStatus"></div>
-      <div class="duel-code-big" id="syncCodeBig" style="display:none">——</div>
-      <div class="pf-ava-row">
-        <button class="btn btn-s btn-sm" id="syncMakeBtn"><span class="mat">qr_code</span><span data-i18n="sync_make">Код для другого устройства</span></button>
-      </div>
-      <div class="lbl" style="margin-top:.7rem" data-i18n="sync_enter">ВВЕСТИ КОД</div>
-      <div class="duel-numrow"><input id="syncCodeIn" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXXXX" style="text-transform:uppercase" /><button class="btn btn-p btn-sm" id="syncUseBtn"><span data-i18n="sync_use">ОК</span></button></div>
-    </div>
   </section>
 
 
@@ -1600,6 +1590,7 @@ function load(){
 load();
 try{fbPullSave(false)}catch(e){}
 try{fbStarsPull()}catch(e){}
+try{fbStarsWatch()}catch(e){}
 rTheme();
 function flushSave(){save(true)}
 window.addEventListener('pagehide',flushSave);
@@ -1682,6 +1673,20 @@ function fbStarsPull(){
       S.bal=Math.floor(cur.v);save();rBal();
     }
   }).catch(()=>{});
+}
+let fbStarsWatching=false;
+function fbStarsWatch(){
+  if(fbStarsWatching||!duelFbReady())return;
+  const id=effectiveTgId();if(!id)return;
+  fbStarsWatching=true;
+  try{
+    fbDb.ref('gapera/stars/'+id).on('value',snap=>{
+      let cur=null;try{cur=snap.val()}catch(e){}
+      if(!cur||typeof cur.v!=='number')return;
+      const v=Math.floor(cur.v);
+      if(v!==S.bal&&((cur.ts||0)>(S.savedAt||0))){S.bal=v;save();rBal()}
+    });
+  }catch(e){fbStarsWatching=false}
 }
 let snT=null;function sn(m,ms){try{$('sn').textContent=m;$('sn').classList.add('on');clearTimeout(snT);snT=setTimeout(()=>$('sn').classList.remove('on'),ms||2000)}catch(e){}}
 function bz(k){
@@ -2798,7 +2803,7 @@ $('dailyBtnTop').addEventListener('click',claimDaily);
 dailyTick();
 setInterval(dailyTick,1000);
 const GAME_NAMES={slots:'Слоты',dice:'Кости',roulette:'Рулетка',crash:'Ракетка',mines:'Мины',coin:'Монета',tower:'Башня',bj:'Блэкджек'};
-function rSt(){try{syncRender()}catch(e){}$('xT').textContent=S.stats.total;$('xW').textContent=S.stats.win;$('xL').textContent=S.stats.loss;$('xWo').textContent=S.stats.won;$('xB').textContent=S.stats.bet;$('xP').textContent=S.stats.won-S.stats.bet;$('xP').style.color=S.stats.won-S.stats.bet>=0?'var(--win)':'var(--e)';$('xWR').textContent=S.stats.total?Math.round(S.stats.win/S.stats.total*100)+'%':'-';$('xBest').textContent=(S.stats.best||0).toLocaleString();const _stw=S.stats.streak||0;$('xSt').textContent=_stw+(_stw>=2?'🔥':'');const el=$('hL');if(!S.hist.length){el.innerHTML='<div style="text-align:center;padding:.8rem;color:var(--on-sv);font-size:.8rem">'+t('empty')+'</div>';return}el.innerHTML='';S.hist.slice(0,30).forEach(h=>{const d=document.createElement('div');d.className='h-item';const t=new Date(h.t);const ts=t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');const safeGame=String(gameName(h.g)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function rSt(){$('xT').textContent=S.stats.total;$('xW').textContent=S.stats.win;$('xL').textContent=S.stats.loss;$('xWo').textContent=S.stats.won;$('xB').textContent=S.stats.bet;$('xP').textContent=S.stats.won-S.stats.bet;$('xP').style.color=S.stats.won-S.stats.bet>=0?'var(--win)':'var(--e)';$('xWR').textContent=S.stats.total?Math.round(S.stats.win/S.stats.total*100)+'%':'-';$('xBest').textContent=(S.stats.best||0).toLocaleString();const _stw=S.stats.streak||0;$('xSt').textContent=_stw+(_stw>=2?'🔥':'');const el=$('hL');if(!S.hist.length){el.innerHTML='<div style="text-align:center;padding:.8rem;color:var(--on-sv);font-size:.8rem">'+t('empty')+'</div>';return}el.innerHTML='';S.hist.slice(0,30).forEach(h=>{const d=document.createElement('div');d.className='h-item';const t=new Date(h.t);const ts=t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');const safeGame=String(gameName(h.g)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 d.innerHTML='<span>'+safeGame+' • '+ts+'</span><span>'+(h.r>0?'<span class="w">+'+h.r+'</span>':'<span class="l">−'+h.a+'</span>')+'</span>';el.appendChild(d)})}
 rSt();
 // ===== PROFILE (уровень, своя аватарка, достижения) =====
@@ -3063,39 +3068,8 @@ function fbPullSave(forceMsg){
     if(v&&v.state&&((v.savedAt||0)>(S.savedAt||0))){
       applyLoadedState(Object.assign({},v.state,{savedAt:v.savedAt}));
       writeLocal();renderAll();
-      if(forceMsg)sn(t('sync_done'));
-    }else if(forceMsg){sn(t('sync_fresh'))}
+    }
   }).catch(()=>{});
-}
-function syncRender(){
-  const st=$('syncStatus');if(!st)return;
-  const id=effectiveTgId();
-  st.textContent=id?t('sync_bound',{id:id}):t('sync_local');
-}
-function syncMake(){
-  try{Sound.click()}catch(e){}
-  if(!duelFbReady()){sn(t('duel_fb_setup'));return}
-  const id=duelTgId();
-  if(!id){sn(t('sync_local'));return}
-  const code=duelCode();
-  try{fbDb.ref('gapera/link/'+code).set({tg:id,ts:Date.now()})}catch(e){sn(t('dst_err'));return}
-  const big=$('syncCodeBig');if(big){big.style.display='';big.textContent=code}
-}
-function syncUse(){
-  try{Sound.click()}catch(e){}
-  if(!duelFbReady()){sn(t('duel_fb_setup'));return}
-  const inp=$('syncCodeIn');
-  const code=String((inp?inp.value:'')||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
-  if(code.length<4){sn(t('dst_code_err'));return}
-  fbDb.ref('gapera/link/'+code).once('value').then(snap=>{
-    let v=null;try{v=snap.val()}catch(e){}
-    if(!v||!v.tg){sn(t('sync_bad'));return}
-    try{localStorage.setItem('gapera_linked_tg',v.tg)}catch(e){}
-    try{fbDb.ref('gapera/link/'+code).remove()}catch(e){}
-    if(inp)inp.value='';
-    const big=$('syncCodeBig');if(big)big.style.display='none';
-    fbPullSave(true);syncRender();
-  }).catch(()=>sn(t('dst_err')));
 }
 function duelNetOK(){return duelFbReady()}
 function duelPeerOpts(){
@@ -4014,11 +3988,6 @@ Object.assign(I18N.ru,{nav_plinko:'Плинко',game_plinko:'Плинко',pl_l
 Object.assign(I18N.en,{nav_plinko:'Plinko',game_plinko:'Plinko',pl_low:'Low',pl_med:'Medium',pl_high:'High',pl_drop:'DROP',pl_rules:'Ball bounces a fair 50/50 on every peg • the bin pays the multiplier'});
 Object.assign(I18N.uk,{nav_plinko:'Плінко',game_plinko:'Плінко',pl_low:'Низький',pl_med:'Середній',pl_high:'Високий',pl_drop:'КИНУТИ',pl_rules:'Кулька чесно стрибає 50/50 на кожному кілочку • лунка платить множник'});
 }catch(e){}
-try{
-Object.assign(I18N.ru,{sync_title:'СИНХРОНИЗАЦИЯ',sync_make:'Код для другого устройства',sync_enter:'ВВЕСТИ КОД',sync_use:'ОК',sync_bound:'Аккаунт: {id} - сейв общий',sync_local:'Без аккаунта - сейв только здесь',sync_bad:'Код не найден',sync_done:'Сейв загружен',sync_fresh:'Здесь данные свежее'});
-Object.assign(I18N.en,{sync_title:'SYNC',sync_make:'Code for another device',sync_enter:'ENTER CODE',sync_use:'OK',sync_bound:'Account: {id} - shared save',sync_local:'No account - save stays here',sync_bad:'Code not found',sync_done:'Save loaded',sync_fresh:'Local data is newer'});
-Object.assign(I18N.uk,{sync_title:'СИНХРОНІЗАЦІЯ',sync_make:'Код для іншого пристрою',sync_enter:'ВВЕСТИ КОД',sync_use:'ОК',sync_bound:'Акаунт: {id} - сейв спільний',sync_local:'Без акаунту - сейв лише тут',sync_bad:'Код не знайдено',sync_done:'Сейв завантажено',sync_fresh:'Тут дані свіжіші'});
-}catch(e){}
 function duelModeName(m){return t(m==='rou'?'d_rou':(m==='pok'?'d_pok':'d_bac'))}
 function duelSendCfg(){duelSend({t:'lobby_cfg',mode:DU.mode,stake:DU.myStake})}
 // Хост жмёт «Начать игру» в лобби: ставка читается из настроек лобби
@@ -4539,8 +4508,6 @@ try{
   const _dci=$('duelChatIn');if(_dci)_dci.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();duelChatSend(e.target.value)}});
   document.querySelectorAll('#duelChatCard .chat-quick button').forEach(b=>b.addEventListener('click',()=>duelChatSend(t('duel_offer',{n:b.dataset.q}))));
   const _dfb=$('duelFindBtn');if(_dfb)_dfb.addEventListener('click',duelFind);
-  const _smb=$('syncMakeBtn');if(_smb)_smb.addEventListener('click',syncMake);
-  const _sub=$('syncUseBtn');if(_sub)_sub.addEventListener('click',syncUse);
   const _dcb=$('duelCancelBtn');if(_dcb)_dcb.addEventListener('click',duelCancelFind);
   document.querySelectorAll('#duelStakeChips .bet-q').forEach(b=>b.addEventListener('click',()=>{
     document.querySelectorAll('#duelStakeChips .bet-q').forEach(x=>x.classList.remove('on'));b.classList.add('on');
