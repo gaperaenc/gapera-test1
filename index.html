@@ -1607,7 +1607,7 @@ function claimBonus(){
   Sound.click();
   const T=(typeof t==='function')?t:function(k,p){return k};
   if(!bonusCanClaim()){sn(T('wait_s',{s:Math.ceil(bonusRemain()/1000)}));return}
-  const amt=bonusAmount();S.bal+=amt;S.lastBonus=Date.now();save();rBal();try{fbClaimWrite('bonus',Math.floor(Date.now()/60000))}catch(e){}
+  const amt=bonusAmount();S.bal+=amt;S.lastBonus=Date.now();save();rBal();try{fbClaimWrite('bonus',{t:firebase.database.ServerValue.TIMESTAMP})}catch(e){}
   Sound.win();bz('win');sn('+'+amt+' '+T('stars_many')+'!');
   try{const b=$('bonusBtn').getBoundingClientRect();confetti(b.left+b.width/2,b.top,22)}catch(e){}
   tickBonus();
@@ -1694,13 +1694,13 @@ function fbStarsWatch(){
       let cur=null;try{cur=snap.val()}catch(e){}
       if(!cur||typeof cur.v!=='number')return;
       const v=Math.floor(cur.v);
-      if(v!==S.bal&&((cur.ts||0)>(S.savedAt||0))){S.bal=v;save();rBal()}
+      if(v!==S.bal){S.bal=v;save();rBal()}
     });
     fbDb.ref('gapera/claimed/'+id).on('value',snap=>{
       let c=null;try{c=snap.val()}catch(e){}
       if(!c)return;
-      const slot=Math.floor(Date.now()/60000);
-      if(+c.bonus===slot&&bonusRemain()<=0){S.lastBonus=Date.now();save();tickBonus()}
+      const bt=+((c.bonus&&c.bonus.t)||c.bonus)||0;
+      if(bt>864000000000&&fbNow()-bt<65000&&bonusRemain()<=0){S.lastBonus=Date.now();save();tickBonus()}
       const todayUTC=new Date().toISOString().slice(0,10);
       if(c.daily&&c.daily.day===todayUTC&&dailyCanClaim()){
         S.daily.lastClaim=Date.now();
