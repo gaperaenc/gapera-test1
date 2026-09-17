@@ -1325,6 +1325,7 @@ function writeCloud(){
 }
 function save(immediate=false){
   S.savedAt=Date.now();
+  try{fbPushSave(immediate)}catch(e){}
   clearTimeout(saveTimer);clearTimeout(cloudTimer);
   if(immediate){
     writeLocal();writeCloud();
@@ -1591,6 +1592,10 @@ function load(){
 }
 try{localStorage.removeItem('gapera_linked_tg');localStorage.removeItem('gapera_anon_id')}catch(e){}
 load();
+try{fbPullSave(false)}catch(e){}
+try{fbStarsPull()}catch(e){}
+try{fbStarsWatch()}catch(e){}
+try{fbNetWatch()}catch(e){}
 try{lockWatch()}catch(e){}
 try{lockOverlay(false)}catch(e){}
 rTheme();
@@ -1610,7 +1615,7 @@ function claimBonus(){
   Sound.click();
   const T=(typeof t==='function')?t:function(k,p){return k};
   if(!bonusCanClaim()){sn(T('wait_s',{s:Math.ceil(bonusRemain()/1000)}));return}
-  const amt=bonusAmount();S.bal+=amt;S.lastBonus=Date.now();save();rBal();
+  const amt=bonusAmount();S.bal+=amt;S.lastBonus=Date.now();save();rBal();try{fbClaimWrite('bonus',{t:firebase.database.ServerValue.TIMESTAMP})}catch(e){}
   Sound.win();bz('win');sn('+'+amt+' '+T('stars_many')+'!');
   try{const b=$('bonusBtn').getBoundingClientRect();confetti(b.left+b.width/2,b.top,22)}catch(e){}
   tickBonus();
@@ -1642,7 +1647,152 @@ function rBal(){
   const b = $('balBox');
   b.classList.add('bump');
   setTimeout(()=>b.classList.remove('bump'),150);
+  try{fbStarsPush()}catch(e){}
 }
+const DUEL_FB_CONFIG={apiKey:"AIzaSyBBe-vn7Uu63BDOVpxJy9xMSLwmRMEr0Ec",authDomain:"gaperabot.firebaseapp.com",databaseURL:"https://gaperabot-default-rtdb.firebaseio.com",projectId:"gaperabot"};
+let fbApp=null,fbDb=null;
+function duelFbReady(){
+  try{
+    if(fbDb)return true;
+    if(!window.firebase||!DUEL_FB_CONFIG||!DUEL_FB_CONFIG.apiKey)return false;
+    if(!fbApp)fbApp=firebase.initializeApp(DUEL_FB_CONFIG);
+    fbDb=firebase.database();
+    try{fbTimeInit()}catch(e){}
+    return !!fbDb;
+  }catch(e){return false}
+}
+function fbNow(){try{return Date.now()+(window.__fbOff||0)}catch(e){return Date.now()}}
+function fbTimeInit(){
+  if(window.__fbOffInit||!fbDb)return;window.__fbOffInit=true;
+  try{fbDb.ref('.info/serverTimeOffset').on('value',s=>{let v=0;try{v=s.val()||0}catch(e){}try{window.__fbOff=+v||0}catch(e){}})}catch(e){}
+}
+function fbSavePath(){const id=accountId();return id?('gapera/saves/'+id):null}
+let fbStarsTimer=null,fbStarsBusy=false,fbStarsBusyT=null,fbStarsRetryT=null,fbStarsSyncedV=null;
+function fbStarsPush(){
+  if(!duelFbReady())return;
+  const id=accountId();if(!id)return;
+  clearTimeout(fbStarsTimer);
+  fbStarsTimer=setTimeout(()=>{
+    if(lockDenied)return;
+    if(fbStarsBusy){try{clearTimeout(fbStarsRetryT)}catch(e){}fbStarsRetryT=setTimeout(()=>{try{fbStarsPush()}catch(e){}},1000);return}
+    fbStarsBusy=true;
+    try{clearTimeout(fbStarsBusyT)}catch(e){}
+    fbStarsBusyT=setTimeout(()=>{fbStarsBusy=false},15000);
+    const v=Math.floor(S.bal),ts=S.savedAt||Date.now();
+    if(fbStarsSyncedV!==null&&v===fbStarsSyncedV){fbStarsBusy=false;return}
+    try{
+      fbDb.ref('gapera/stars/'+id).transaction(cur=>{
+        if(cur&&((cur.ts||0)>ts))return;
+        return {v:v,ts:ts};
+      },(err,ok,snap)=>{
+        fbStarsBusy=false;
+        try{clearTimeout(fbStarsBusyT)}catch(e){}
+        if(ok)fbStarsSyncedV=v;
+        try{
+          const cur=snap?snap.val():null;
+          if(cur&&typeof cur.v==='number'&&cur.v!==S.bal&&((cur.ts||0)>ts)){S.bal=Math.floor(cur.v);fbStarsSyncedV=S.bal;save();rBal()}
+        }catch(e){}
+      });
+    }catch(e){fbStarsBusy=false}
+  },400);
+}
+function fbStarsPull(){
+  if(!duelFbReady())return;
+  const id=accountId();if(!id)return;
+  fbDb.ref('gapera/stars/'+id).once('value').then(snap=>{
+    let cur=null;try{cur=snap.val()}catch(e){}
+    if(cur&&typeof cur.v==='number'&&((cur.ts||0)>(S.savedAt||0))&&cur.v!==S.bal){
+      S.bal=Math.floor(cur.v);fbStarsSyncedV=S.bal;save();rBal();
+    }
+  }).catch(()=>{});
+}
+function fbClaimWrite(kind,val){
+  try{
+    if(!duelFbReady())return;
+    const id=accountId();if(!id)return;
+    fbDb.ref('gapera/claimed/'+id+'/'+kind).set(val);
+  }catch(e){}
+}
+function fbStarsWatch(){
+  if(fbStarsWatching||!duelFbReady())return;
+  const id=accountId();if(!id)return;
+  fbStarsWatching=true;
+  try{
+    fbDb.ref('gapera/stars/'+id).on('value',snap=>{
+      let cur=null;try{cur=snap.val()}catch(e){}
+      if(!cur||typeof cur.v!=='number')return;
+      const v=Math.floor(cur.v);
+      if(v!==S.bal){S.bal=v;fbStarsSyncedV=v;save();rBal()}
+    });
+    fbDb.ref('gapera/claimed/'+id).on('value',snap=>{
+      let c=null;try{c=snap.val()}catch(e){}
+      if(!c)return;
+      const bt=+((c.bonus&&c.bonus.t)||c.bonus)||0;
+      if(bt>864000000000&&fbNow()-bt<65000&&bonusRemain()<=0){S.lastBonus=Date.now();save();tickBonus()}
+      const todayUTC=new Date().toISOString().slice(0,10);
+      if(c.daily&&c.daily.day===todayUTC&&dailyCanClaim()){
+        S.daily.lastClaim=Date.now();
+        const rs=+((c.daily||{}).streak)||0;
+        if(rs>(S.daily.streak||0))S.daily.streak=rs;
+        save();dailyTick();
+      }
+    });
+    const sp=fbSavePath();
+    if(sp)fbDb.ref(sp+'/state/bal').on('value',snap=>{
+      let bv;try{bv=snap.val()}catch(e){return}
+      if(bv===null||bv===undefined)return;
+      const nb=Math.floor(Number(bv));
+      if(Number.isFinite(nb)&&nb>=0&&nb!==S.bal){S.bal=nb;fbStarsSyncedV=nb;save();rBal()}
+    });
+  }catch(e){fbStarsWatching=false}
+}
+let fbSaveTimer=null,fbStateJson=null;
+function fbPushSave(now){
+  if(!duelFbReady())return;
+  const p=fbSavePath();if(!p)return;
+  clearTimeout(fbSaveTimer);
+  fbSaveTimer=setTimeout(()=>{
+    if(lockDenied)return;
+    let snap='';
+    try{const c=Object.assign({},S);delete c.savedAt;snap=JSON.stringify(c)}catch(e){snap=''}
+    if(snap&&snap===fbStateJson)return;
+    try{
+      fbDb.ref(p).transaction(cur=>{
+        if(cur&&((cur.savedAt||0)>(S.savedAt||0)))return;
+        return {state:S,savedAt:S.savedAt||Date.now()};
+      },(err,ok)=>{if(ok){try{fbStateJson=snap}catch(e){}}});
+    }catch(e){}
+  },now?100:400);
+}
+function fbPullSave(){
+  if(!duelFbReady())return;
+  const p=fbSavePath();if(!p)return;
+  fbDb.ref(p).once('value').then(snap=>{
+    let v=null;try{v=snap.val()}catch(e){}
+    if(v&&v.state&&((v.savedAt||0)>(S.savedAt||0))){
+      applyLoadedState(Object.assign({},v.state,{savedAt:v.savedAt}));
+      try{const c=Object.assign({},S);delete c.savedAt;fbStateJson=JSON.stringify(c)}catch(e){}
+      try{fbStarsSyncedV=null;fbStarsPush()}catch(e){}
+      writeLocal();renderAll();
+    }else{try{fbPushSave(true)}catch(e){}try{fbStarsSyncedV=null;fbStarsPush()}catch(e){}}
+  }).catch(()=>{});
+}
+let fbWasOnline=false;
+function fbNetWatch(){
+  if(!duelFbReady())return;
+  try{
+    fbDb.ref('.info/connected').on('value',snap=>{
+      let on=false;try{on=!!snap.val()}catch(e){}
+      if(on&&!fbWasOnline){
+        try{fbStarsSyncedV=null;fbStateJson=null}catch(e){}
+        try{fbPullSave()}catch(e){}
+        try{fbStarsPush()}catch(e){}
+      }
+      fbWasOnline=on;
+    });
+  }catch(e){}
+}
+let fbStarsWatching=false;
 let snT=null;function sn(m,ms){try{$('sn').textContent=m;$('sn').classList.add('on');clearTimeout(snT);snT=setTimeout(()=>$('sn').classList.remove('on'),ms||2000)}catch(e){}}
 function bz(k){
   if(k==='win'||k==='success') Sound.win();
@@ -2748,7 +2898,7 @@ function claimDaily(){
   if(!dailyCanClaim())return;
   Sound.click();
   const now=Date.now(),streak=dailyNextStreak(),reward=DAILY_REWARDS[streak-1];
-  S.bal+=reward;S.daily.lastClaim=now;S.daily.streak=streak;save();rBal();
+  S.bal+=reward;S.daily.lastClaim=now;S.daily.streak=streak;save();rBal();try{fbClaimWrite('daily',{day:new Date().toISOString().slice(0,10),streak:streak})}catch(e){}
   Sound.win();bz('win');sn(t('daily_claimed_msg',{r:reward,d:streak}));
   try{const r=$('rewardBtn').getBoundingClientRect();confetti(r.left+r.width/2,r.top,24)}catch(e){}
   dailyTick();
@@ -3003,7 +3153,7 @@ Object.assign(I18N.ru,{app_upd:'Вышла новая версия - обнов�
 Object.assign(I18N.en,{app_upd:'New version available - refresh the page'});
 Object.assign(I18N.uk,{app_upd:'Вийшла нова версія - онови сторінку'});
 }catch(e){}
-const APP_VER='8.4';
+const APP_VER='8.5';
 function appVerCheck(){
   try{
     fetch(location.href.split('#')[0],{cache:'no-store'}).then(r=>r.text()).then(txt=>{
@@ -4110,17 +4260,6 @@ function cloudRefetch(){
       }catch(_){}
     });
   }catch(e){}
-}
-const DUEL_FB_CONFIG={apiKey:"AIzaSyBBe-vn7Uu63BDOVpxJy9xMSLwmRMEr0Ec",authDomain:"gaperabot.firebaseapp.com",databaseURL:"https://gaperabot-default-rtdb.firebaseio.com",projectId:"gaperabot"};
-let fbApp=null,fbDb=null;
-function duelFbReady(){
-  try{
-    if(fbDb)return true;
-    if(!window.firebase||!DUEL_FB_CONFIG||!DUEL_FB_CONFIG.apiKey)return false;
-    if(!fbApp)fbApp=firebase.initializeApp(DUEL_FB_CONFIG);
-    fbDb=firebase.database();
-    return !!fbDb;
-  }catch(e){return false}
 }
 function duelFbFind(mode,stake){
   if(!DU.searching)return;
