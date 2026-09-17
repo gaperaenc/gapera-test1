@@ -520,8 +520,6 @@ button:focus-visible,input:focus-visible,[role="switch"]:focus-visible{outline:2
 .chat-q:active{transform:scale(.92)}
 .bet-q.on{background:var(--p);color:var(--on-p);border-color:var(--p)}
 .plinko-canvas{width:100%;height:300px;display:block;border-radius:var(--sh-l);border:1px solid var(--ol-v);background:radial-gradient(120% 110% at 50% 0%,#35855A,#1E5B3A 55%,#123722)}
-
-.ni[data-s="duel"]{display:none!important}
   </style>
 </head>
 <body>
@@ -1608,7 +1606,7 @@ function claimBonus(){
   Sound.click();
   const T=(typeof t==='function')?t:function(k,p){return k};
   if(!bonusCanClaim()){sn(T('wait_s',{s:Math.ceil(bonusRemain()/1000)}));return}
-  const amt=bonusAmount();S.bal+=amt;S.lastBonus=Date.now();save();rBal();
+  const amt=bonusAmount();S.bal+=amt;S.lastBonus=Date.now();save();rBal();try{fbClaimWrite('bonus',Math.floor(Date.now()/60000))}catch(e){}
   Sound.win();bz('win');sn('+'+amt+' '+T('stars_many')+'!');
   try{const b=$('bonusBtn').getBoundingClientRect();confetti(b.left+b.width/2,b.top,22)}catch(e){}
   tickBonus();
@@ -1642,13 +1640,15 @@ function rBal(){
   setTimeout(()=>b.classList.remove('bump'),150);
   try{fbStarsPush()}catch(e){}
 }
-let fbStarsTimer=null,fbStarsBusy=false;
+let fbStarsTimer=null,fbStarsBusy=false,fbStarsBusyT=null;
 function fbStarsPush(){
   if(!duelFbReady())return;
   const id=effectiveTgId();if(!id)return;
   clearTimeout(fbStarsTimer);
   fbStarsTimer=setTimeout(()=>{
     if(fbStarsBusy)return;fbStarsBusy=true;
+    try{clearTimeout(fbStarsBusyT)}catch(e){}
+    fbStarsBusyT=setTimeout(()=>{fbStarsBusy=false},15000);
     const v=Math.floor(S.bal),ts=S.savedAt||Date.now();
     try{
       fbDb.ref('gapera/stars/'+id).transaction(cur=>{
@@ -1656,13 +1656,14 @@ function fbStarsPush(){
         return {v:v,ts:ts};
       },(err,ok,snap)=>{
         fbStarsBusy=false;
+        try{clearTimeout(fbStarsBusyT)}catch(e){}
         try{
           const cur=snap?snap.val():null;
           if(cur&&typeof cur.v==='number'&&cur.v!==S.bal&&((cur.ts||0)>ts)){S.bal=Math.floor(cur.v);save();rBal()}
         }catch(e){}
       });
     }catch(e){fbStarsBusy=false}
-  },2500);
+  },800);
 }
 function fbStarsPull(){
   if(!duelFbReady())return;
@@ -1675,6 +1676,13 @@ function fbStarsPull(){
   }).catch(()=>{});
 }
 let fbStarsWatching=false;
+function fbClaimWrite(kind,val){
+  try{
+    if(!duelFbReady())return;
+    const id=effectiveTgId();if(!id)return;
+    fbDb.ref('gapera/claimed/'+id+'/'+kind).set(val);
+  }catch(e){}
+}
 function fbStarsWatch(){
   if(fbStarsWatching||!duelFbReady())return;
   const id=effectiveTgId();if(!id)return;
@@ -1685,6 +1693,19 @@ function fbStarsWatch(){
       if(!cur||typeof cur.v!=='number')return;
       const v=Math.floor(cur.v);
       if(v!==S.bal&&((cur.ts||0)>(S.savedAt||0))){S.bal=v;save();rBal()}
+    });
+    fbDb.ref('gapera/claimed/'+id).on('value',snap=>{
+      let c=null;try{c=snap.val()}catch(e){}
+      if(!c)return;
+      const slot=Math.floor(Date.now()/60000);
+      if(+c.bonus===slot&&bonusRemain()<=0){S.lastBonus=Date.now();save();tickBonus()}
+      const todayUTC=new Date().toISOString().slice(0,10);
+      if(c.daily&&c.daily.day===todayUTC&&dailyCanClaim()){
+        S.daily.lastClaim=Date.now();
+        const rs=+((c.daily||{}).streak)||0;
+        if(rs>(S.daily.streak||0))S.daily.streak=rs;
+        save();dailyTick();
+      }
     });
   }catch(e){fbStarsWatching=false}
 }
@@ -2793,7 +2814,7 @@ function claimDaily(){
   if(!dailyCanClaim())return;
   Sound.click();
   const now=Date.now(),streak=dailyNextStreak(),reward=DAILY_REWARDS[streak-1];
-  S.bal+=reward;S.daily.lastClaim=now;S.daily.streak=streak;save();rBal();
+  S.bal+=reward;S.daily.lastClaim=now;S.daily.streak=streak;save();rBal();try{fbClaimWrite('daily',{day:new Date().toISOString().slice(0,10),streak:streak})}catch(e){}
   Sound.win();bz('win');sn(t('daily_claimed_msg',{r:reward,d:streak}));
   try{const r=$('rewardBtn').getBoundingClientRect();confetti(r.left+r.width/2,r.top,24)}catch(e){}
   dailyTick();
@@ -4054,8 +4075,7 @@ function duelHbStop(){try{clearInterval(DU.hbTimer)}catch(e){}DU.hbTimer=null}
 // Firebase, создай Realtime Database и вставь сюда её конфиг.
 // Пошагово - в файле FIREBASE_SETUP.md рядом с index.html.
 // Без конфига кнопка онлайн-поиска честно скажет, что сервер не подключён.
-// ВРЕМЕННО: дуэли скрыты из меню. Вернуть: поставить true и удалить CSS-правило .ni[data-s="duel"] выше.
-const DUELS_VISIBLE=false;
+const DUELS_VISIBLE=true;
 const DUEL_FB_CONFIG={apiKey:"AIzaSyBBe-vn7Uu63BDOVpxJy9xMSLwmRMEr0Ec",authDomain:"gaperabot.firebaseapp.com",databaseURL:"https://gaperabot-default-rtdb.firebaseio.com",projectId:"gaperabot"};
 let fbApp=null,fbDb=null;
 function duelFbReady(){
