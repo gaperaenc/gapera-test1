@@ -1598,6 +1598,7 @@ try{fbStarsWatch()}catch(e){}
 try{fbNetWatch()}catch(e){}
 try{lockWatch()}catch(e){}
 try{lockOverlay(false)}catch(e){}
+try{presenceStart()}catch(e){}
 rTheme();
 function flushSave(){save(true)}
 window.addEventListener('pagehide',flushSave);
@@ -4374,6 +4375,18 @@ function lockWatch(){
       lockHeld=false;lockDenied=true;lockHbStop();lockOverlay(true);
     });
   }catch(e){}
+}
+let presenceT=null;
+function presenceStart(){
+  try{clearInterval(presenceT)}catch(e){}
+  if(!duelFbReady())return;
+  const id=accountId();if(!id)return;
+  let ref=null;
+  try{ref=fbDb.ref('gapera/online/'+id+'/'+lockSidGet())}catch(e){return}
+  const beat=()=>{try{ref.set({ts:fbNow(),ver:(typeof APP_VER!=='undefined'?APP_VER:'?')})}catch(e){}};
+  beat();
+  presenceT=setInterval(beat,20000);
+  try{ref.onDisconnect().remove()}catch(e){}
 }
 function duelNetOK(){return duelFbReady()}
 function duelCreate(){
