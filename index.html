@@ -1314,7 +1314,7 @@ function writeLocal(){
 }
 let cloudTimer=null;
 function writeCloud(){
-  if(!CLOUD_OK||!cloudReady)return;
+  if(!CLOUD_OK||!cloudReady||lockDenied)return;
   try{
     const core=Object.assign({},S,{hist:undefined});
     delete core.hist;
@@ -1324,8 +1324,7 @@ function writeCloud(){
   }catch(e){}
 }
 function save(immediate=false){
-  S.savedAt=fbNow();
-  try{fbPushSave(immediate)}catch(e){}
+  S.savedAt=Date.now();
   clearTimeout(saveTimer);clearTimeout(cloudTimer);
   if(immediate){
     writeLocal();writeCloud();
@@ -1592,15 +1591,10 @@ function load(){
 }
 try{localStorage.removeItem('gapera_linked_tg');localStorage.removeItem('gapera_anon_id')}catch(e){}
 load();
-try{fbPullSave(false)}catch(e){}
-try{fbStarsPull()}catch(e){}
-try{fbStarsWatch()}catch(e){}
-try{fbNetWatch()}catch(e){}
 try{lockWatch()}catch(e){}
 try{lockOverlay(false)}catch(e){}
-try{presenceStart()}catch(e){}
 rTheme();
-function flushSave(){save(true)}
+function flushSave(){save(true);try{lockRelease()}catch(e){}}
 window.addEventListener('pagehide',flushSave);
 window.addEventListener('beforeunload',flushSave);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushSave()});
@@ -1616,7 +1610,7 @@ function claimBonus(){
   Sound.click();
   const T=(typeof t==='function')?t:function(k,p){return k};
   if(!bonusCanClaim()){sn(T('wait_s',{s:Math.ceil(bonusRemain()/1000)}));return}
-  const amt=bonusAmount();S.bal+=amt;S.lastBonus=Date.now();save();rBal();try{fbClaimWrite('bonus',{t:firebase.database.ServerValue.TIMESTAMP})}catch(e){}
+  const amt=bonusAmount();S.bal+=amt;S.lastBonus=Date.now();save();rBal();
   Sound.win();bz('win');sn('+'+amt+' '+T('stars_many')+'!');
   try{const b=$('bonusBtn').getBoundingClientRect();confetti(b.left+b.width/2,b.top,22)}catch(e){}
   tickBonus();
@@ -1648,87 +1642,6 @@ function rBal(){
   const b = $('balBox');
   b.classList.add('bump');
   setTimeout(()=>b.classList.remove('bump'),150);
-  try{fbStarsPush()}catch(e){}
-}
-let fbStarsTimer=null,fbStarsBusy=false,fbStarsBusyT=null,fbStarsRetryT=null,fbStarsSyncedV=null;
-function fbStarsPush(){
-  if(!duelFbReady())return;
-  const id=accountId();if(!id)return;
-  clearTimeout(fbStarsTimer);
-  fbStarsTimer=setTimeout(()=>{
-    if(lockDenied)return;
-    if(fbStarsBusy){try{clearTimeout(fbStarsRetryT)}catch(e){}fbStarsRetryT=setTimeout(()=>{try{fbStarsPush()}catch(e){}},1000);return}
-    fbStarsBusy=true;
-    try{clearTimeout(fbStarsBusyT)}catch(e){}
-    fbStarsBusyT=setTimeout(()=>{fbStarsBusy=false},15000);
-    const v=Math.floor(S.bal),ts=S.savedAt||Date.now();
-    if(fbStarsSyncedV!==null&&v===fbStarsSyncedV)return;
-    try{
-      fbDb.ref('gapera/stars/'+id).transaction(cur=>{
-        if(cur&&((cur.ts||0)>ts))return;
-        return {v:v,ts:ts};
-      },(err,ok,snap)=>{
-        fbStarsBusy=false;
-        try{clearTimeout(fbStarsBusyT)}catch(e){}
-        if(ok)fbStarsSyncedV=v;
-        try{
-          const cur=snap?snap.val():null;
-          if(cur&&typeof cur.v==='number'&&cur.v!==S.bal&&((cur.ts||0)>ts)){S.bal=Math.floor(cur.v);fbStarsSyncedV=S.bal;save();rBal()}
-        }catch(e){}
-      });
-    }catch(e){fbStarsBusy=false}
-  },400);
-}
-function fbStarsPull(){
-  if(!duelFbReady())return;
-  const id=accountId();if(!id)return;
-  fbDb.ref('gapera/stars/'+id).once('value').then(snap=>{
-    let cur=null;try{cur=snap.val()}catch(e){}
-    if(cur&&typeof cur.v==='number'&&((cur.ts||0)>(S.savedAt||0))&&cur.v!==S.bal){
-      S.bal=Math.floor(cur.v);fbStarsSyncedV=S.bal;save();rBal();
-    }
-  }).catch(()=>{});
-}
-let fbStarsWatching=false;
-function fbClaimWrite(kind,val){
-  try{
-    if(!duelFbReady())return;
-    const id=accountId();if(!id)return;
-    fbDb.ref('gapera/claimed/'+id+'/'+kind).set(val);
-  }catch(e){}
-}
-function fbStarsWatch(){
-  if(fbStarsWatching||!duelFbReady())return;
-  const id=accountId();if(!id)return;
-  fbStarsWatching=true;
-  try{
-    fbDb.ref('gapera/stars/'+id).on('value',snap=>{
-      let cur=null;try{cur=snap.val()}catch(e){}
-      if(!cur||typeof cur.v!=='number')return;
-      const v=Math.floor(cur.v);
-      if(v!==S.bal){S.bal=v;fbStarsSyncedV=v;save();rBal()}
-    });
-    fbDb.ref('gapera/claimed/'+id).on('value',snap=>{
-      let c=null;try{c=snap.val()}catch(e){}
-      if(!c)return;
-      const bt=+((c.bonus&&c.bonus.t)||c.bonus)||0;
-      if(bt>864000000000&&fbNow()-bt<65000&&bonusRemain()<=0){S.lastBonus=Date.now();save();tickBonus()}
-      const todayUTC=new Date().toISOString().slice(0,10);
-      if(c.daily&&c.daily.day===todayUTC&&dailyCanClaim()){
-        S.daily.lastClaim=Date.now();
-        const rs=+((c.daily||{}).streak)||0;
-        if(rs>(S.daily.streak||0))S.daily.streak=rs;
-        save();dailyTick();
-      }
-    });
-    const sp=fbSavePath();
-    if(sp)fbDb.ref(sp+'/state/bal').on('value',snap=>{
-      let bv;try{bv=snap.val()}catch(e){return}
-      if(bv===null||bv===undefined)return;
-      const nb=Math.floor(Number(bv));
-      if(Number.isFinite(nb)&&nb>=0&&nb!==S.bal){S.bal=nb;fbStarsSyncedV=nb;save();rBal()}
-    });
-  }catch(e){fbStarsWatching=false}
 }
 let snT=null;function sn(m,ms){try{$('sn').textContent=m;$('sn').classList.add('on');clearTimeout(snT);snT=setTimeout(()=>$('sn').classList.remove('on'),ms||2000)}catch(e){}}
 function bz(k){
@@ -2835,7 +2748,7 @@ function claimDaily(){
   if(!dailyCanClaim())return;
   Sound.click();
   const now=Date.now(),streak=dailyNextStreak(),reward=DAILY_REWARDS[streak-1];
-  S.bal+=reward;S.daily.lastClaim=now;S.daily.streak=streak;save();rBal();try{fbClaimWrite('daily',{day:new Date().toISOString().slice(0,10),streak:streak})}catch(e){}
+  S.bal+=reward;S.daily.lastClaim=now;S.daily.streak=streak;save();rBal();
   Sound.win();bz('win');sn(t('daily_claimed_msg',{r:reward,d:streak}));
   try{const r=$('rewardBtn').getBoundingClientRect();confetti(r.left+r.width/2,r.top,24)}catch(e){}
   dailyTick();
@@ -3085,44 +2998,12 @@ function duelMe(){
 function duelSetText(id,v){const e=$(id);if(e)e.textContent=v}
 function duelSetStatus(k,pr){DU.st={k:k,p:pr||null};const el=$('duelStatus');if(el){try{el.textContent=t(k,pr)}catch(e){el.textContent=k}}}
 function accountId(){try{if(TG&&TG.initDataUnsafe&&TG.initDataUnsafe.user&&TG.initDataUnsafe.user.id)return 'tg'+TG.initDataUnsafe.user.id}catch(e){}return null}
-let fbSaveTimer=null,fbStateJson=null;
-function fbSavePath(){const id=accountId();return id?('gapera/saves/'+id):null}
-function fbPushSave(now){
-  if(!duelFbReady())return;
-  const p=fbSavePath();if(!p)return;
-  clearTimeout(fbSaveTimer);
-  fbSaveTimer=setTimeout(()=>{
-    if(lockDenied)return;
-    let snap='';
-    try{const c=Object.assign({},S);delete c.savedAt;snap=JSON.stringify(c)}catch(e){snap=''}
-    if(snap&&snap===fbStateJson)return;
-    try{
-      fbDb.ref(p).transaction(cur=>{
-        if(cur&&((cur.savedAt||0)>(S.savedAt||0)))return;
-        return {state:S,savedAt:S.savedAt||Date.now()};
-      },(err,ok)=>{if(ok){try{fbStateJson=snap}catch(e){}}});
-    }catch(e){}
-  },now?100:400);
-}
-function fbPullSave(forceMsg){
-  if(!duelFbReady())return;
-  const p=fbSavePath();if(!p)return;
-  fbDb.ref(p).once('value').then(snap=>{
-    let v=null;try{v=snap.val()}catch(e){}
-    if(v&&v.state&&((v.savedAt||0)>(S.savedAt||0))){
-      applyLoadedState(Object.assign({},v.state,{savedAt:v.savedAt}));
-      try{const c=Object.assign({},S);delete c.savedAt;fbStateJson=JSON.stringify(c)}catch(e){}
-      try{fbStarsSyncedV=null;fbStarsPush()}catch(e){}
-      writeLocal();renderAll();
-    }else{try{fbPushSave(true)}catch(e){}try{fbStarsSyncedV=null;fbStarsPush()}catch(e){}}
-  }).catch(()=>{});
-}
 try{
 Object.assign(I18N.ru,{app_upd:'Вышла новая версия - обнови страницу'});
 Object.assign(I18N.en,{app_upd:'New version available - refresh the page'});
 Object.assign(I18N.uk,{app_upd:'Вийшла нова версія - онови сторінку'});
 }catch(e){}
-const APP_VER='8.2';
+const APP_VER='8.4';
 function appVerCheck(){
   try{
     fetch(location.href.split('#')[0],{cache:'no-store'}).then(r=>r.text()).then(txt=>{
@@ -3136,21 +3017,6 @@ function appVerCheck(){
 }
 try{setTimeout(appVerCheck,15000)}catch(e){}
 try{setInterval(appVerCheck,1800000)}catch(e){}
-let fbWasOnline=false;
-function fbNetWatch(){
-  if(!duelFbReady())return;
-  try{
-    fbDb.ref('.info/connected').on('value',snap=>{
-      let on=false;try{on=!!snap.val()}catch(e){}
-      if(on&&!fbWasOnline){
-        try{fbStarsSyncedV=null;fbStateJson=null}catch(e){}
-        try{fbPullSave()}catch(e){}
-        try{fbStarsPush()}catch(e){}
-      }
-      fbWasOnline=on;
-    });
-  }catch(e){}
-}
 function duelPeerOpts(){
   // На разных сетях прямое соединение режут NAT/файрволы - пробиваем через
   // TURN-релеи. Несколько независимых серверов: если один мёртв, сработает
@@ -3906,9 +3772,13 @@ function duelOnData(d){
     DU.opp={name:String(d.name||'?').slice(0,14),ava:String(d.ava||'?').slice(0,2)};
     DU.linked=true;
     duelSetStatus('dst_conn');duelRender();
-    // Хост не стартует сразу: сначала настраивает лобби (режим/ставку) и жмёт «Начать»
-    if(DU.role==='host'&&!DU.started)duelSendCfg();
+    if(DU.role==='host'&&!DU.started){duelSend({t:'match',mode:DU.mode,stake:DU.myStake});setTimeout(function(){try{if(DU.role==='host'&&!DU.started&&DU.conn)duelBeginMatch()}catch(e){}},600)}
     return;
+  }
+  if(d.t==='match'&&DU.role==='guest'&&!DU.started){
+    if(d.mode==='bac'||d.mode==='rou'||d.mode==='pok')DU.mode=d.mode;
+    if(Number.isFinite(+d.stake)&&+d.stake>=1)DU.myStake=Math.floor(+d.stake);
+    duelRender();return;
   }
   if(d.t==='bac_begin'&&DU.role==='guest'){
     DU.started=true;DU.over=false;DU.winner=null;DU.invested=0;
@@ -4048,9 +3918,9 @@ Object.assign(I18N.en,{duel_server:'SIGNALING SERVER',duel_srv_bad:'Check addres
 Object.assign(I18N.uk,{duel_server:'СЕРВЕР СИГНАЛІНГУ',duel_srv_bad:'Перевір адресу: хост:порт/шлях',duel_srv_ok:'Свій сервер збережено',duel_srv_reset_done:'Скинуто на хмару',duel_srv_cur_cloud:'Сервер: хмара PeerJS (за замовчуванням)',duel_srv_cur:'Сервер: {h}'});
 }catch(e){}
 try{
-Object.assign(I18N.ru,{duel_find:'ИГРАТЬ ОНЛАЙН',duel_cancel:'Отмена',duel_searching:'Ищем соперника…',duel_found:'Соперник найден!',duel_fb_setup:'Онлайн не подключён - нужен Firebase (см. FIREBASE_SETUP.md)'});
-Object.assign(I18N.en,{duel_find:'PLAY ONLINE',duel_cancel:'Cancel',duel_searching:'Finding opponent…',duel_found:'Opponent found!',duel_fb_setup:'Online is not connected - Firebase needed (see FIREBASE_SETUP.md)'});
-Object.assign(I18N.uk,{duel_find:'ГРАТИ ОНЛАЙН',duel_cancel:'Скасувати',duel_searching:'Шукаємо суперника…',duel_found:'Суперника знайдено!',duel_fb_setup:'Онлайн не підключено - потрібен Firebase (див. FIREBASE_SETUP.md)'});
+Object.assign(I18N.ru,{duel_find:'ИГРАТЬ ОНЛАЙН',duel_cancel:'Отмена',duel_searching:'Ищем соперника…',duel_found:'Соперник найден!',duel_fb_setup:'Онлайн не подключён - проверь интернет'});
+Object.assign(I18N.en,{duel_find:'PLAY ONLINE',duel_cancel:'Cancel',duel_searching:'Finding opponent…',duel_found:'Opponent found!',duel_fb_setup:'Online is not connected - check internet'});
+Object.assign(I18N.uk,{duel_find:'ГРАТИ ОНЛАЙН',duel_cancel:'Скасувати',duel_searching:'Шукаємо суперника…',duel_found:'Суперника знайдено!',duel_fb_setup:'Онлайн не підключено - перевір інтернет'});
 }catch(e){}
 try{
 Object.assign(I18N.ru,{nav_bj:'21',game_bj:'Блэкджек',bj_title:'БЛЭКДЖЕК • ДО 21',bj_dealer:'Дилер',bj_you:'Вы',bj_deal:'РАЗДАТЬ',bj_hit:'Ещё',bj_stand:'Хватит',bj_double:'Удвоить',bj_ins_q:'У дилера туз. Страховка за {n}?',bj_ins_yes:'Взять',bj_ins_no:'Без',bj_even_q:'Блэкджек! Забрать 1:1 сразу или играть?',bj_take:'Забрать',bj_play_on:'Играть',bj_win:'Победа +{n}',bj_lose:'−{n}',bj_push:'Ничья - возврат',bj_bust:'Перебор! −{n}',bj_dealer_bust:'Дилер перебрал! +{n}',bj_bj:'БЛЭКДЖЕК! +{n}',bj_ins_win:'Страховка сыграла +{n}',bj_shoe:'Шу',bj_rules:'Блэкджек платит 3:2 • дилер стоит на 17 • страховка 2:1 • дабл - одна карта • сплитов нет',bj_reshuffle:'Шу закончился - новый замес (6 колод)'});
@@ -4132,44 +4002,15 @@ function duelHbStart(){
   },15000);
 }
 function duelHbStop(){try{clearInterval(DU.hbTimer)}catch(e){}DU.hbTimer=null}
-// ===== Онлайн-дуэли через Firebase: без кодов, без P2P, без своего ПК =====
-// Игрок выбирает режим и ставку, жмёт «Играть онлайн» - сервер сам подбирает
-// соперника с тем же режимом и ставкой. Весь трафик идёт через Firebase
-// обычным HTTPS, поэтому никакие NAT не страшны хоть с разных концов земли.
-// Создатель комнаты - хост (крупье): тасует и раздаёт, гость зеркалит.
-// Кодов вводить не нужно вообще.
-//
-// ВКЛЮЧЕНИЕ (один раз, 10 минут, бесплатно): заведи проект в консоли
-// Firebase, создай Realtime Database и вставь сюда её конфиг.
-// Пошагово - в файле FIREBASE_SETUP.md рядом с index.html.
-// Без конфига кнопка онлайн-поиска честно скажет, что сервер не подключён.
 const DUELS_VISIBLE=true;
-const DUEL_FB_CONFIG={apiKey:"AIzaSyBBe-vn7Uu63BDOVpxJy9xMSLwmRMEr0Ec",authDomain:"gaperabot.firebaseapp.com",databaseURL:"https://gaperabot-default-rtdb.firebaseio.com",projectId:"gaperabot"};
-let fbApp=null,fbDb=null;
-function fbNow(){try{return Date.now()+(window.__fbOff||0)}catch(e){return Date.now()}}
-function fbTimeInit(){
-  if(window.__fbOffInit||!fbDb)return;window.__fbOffInit=true;
-  try{fbDb.ref('.info/serverTimeOffset').on('value',s=>{let v=0;try{v=s.val()||0}catch(e){}try{window.__fbOff=+v||0}catch(e){}})}catch(e){}
-}
-function duelFbReady(){
-  try{
-    if(fbDb)return true;
-    if(!window.firebase||!DUEL_FB_CONFIG||!DUEL_FB_CONFIG.apiKey)return false;
-    if(!fbApp)fbApp=firebase.initializeApp(DUEL_FB_CONFIG);
-    fbDb=firebase.database();
-    try{fbTimeInit()}catch(e){}
-    return !!fbDb;
-  }catch(e){return false}
-}
 function duelFindStatus(m){const e=$('duelFindStatus');if(e)e.textContent=m||''}
 function duelMatchId(){try{let m=localStorage.getItem('gapera_match_id');if(!m){m='m'+Math.random().toString(36).slice(2,10);localStorage.setItem('gapera_match_id',m)}return m}catch(e){return 'm'+Math.random().toString(36).slice(2,10)}}
 function duelFind(){
   try{Sound.click()}catch(e){}
   if(DU.searching||DU.started||DU.role)return;
-  if(!accountId()){sn(t('duel_need_tg'));return}
   if(!duelFbReady()){sn(t('duel_fb_setup'));return}
   const stake=Math.max(1,clampBet('duelStakeIn'));
-  DU.searching=true;DU.sigId=duelMatchId();
+  DU.searching=true;DU.sigId='p'+Math.random().toString(36).slice(2,10);
   duelFindStatus(t('duel_searching'));
   duelFindUI();duelRender();
   duelFbFind(DU.mode,stake);
@@ -4194,7 +4035,93 @@ function duelCancelFind(){
   DU.roomId=null;DU.role=null;DU.link=null;
   duelFindUI();duelRender();
 }
-// Ищем открытый стол с тем же режимом и ставкой, иначе создаём свой и ждём
+let lockSid=null,lockHeld=false,lockDenied=false,lockHbT=null,lockPollT=null;
+function lockPath(){const id=accountId();if(!id)return null;return 'gapera/lock/'+id}
+function lockSidGet(){
+  if(lockSid)return lockSid;
+  try{lockSid=sessionStorage.getItem('gapera_lock_sid')||''}catch(e){lockSid=''}
+  if(!lockSid){lockSid='s'+Math.random().toString(36).slice(2,12);try{sessionStorage.setItem('gapera_lock_sid',lockSid)}catch(e){}}
+  return lockSid;
+}
+function lockOverlay(on){try{const e=$('lockOverlay');if(e)e.style.display=on?'grid':'none'}catch(e2){}try{const m=$('lockMeLbl');if(m)m.textContent='ID: '+(accountId()||'guest')}catch(e3){}}
+function lockRead(cb){try{if(!CLOUD_OK){cb(null);return}TG.CloudStorage.getItems(['gapera_lock'],function(err,res){let v=null;try{v=res?res['gapera_lock']:null}catch(e){}cb(err?v||null:v||null)})}catch(e){cb(null)}}
+function lockWrite(obj){try{if(!CLOUD_OK)return;TG.CloudStorage.setItem('gapera_lock',JSON.stringify(obj),function(){})}catch(e){}}
+function lockParse(raw){try{const o=JSON.parse(raw||'');if(o&&o.sid)return o}catch(e){}return null}
+function lockHbStart(){
+  lockHbStop();
+  if(!CLOUD_OK)return;
+  const beat=()=>{try{if(lockHeld)lockWrite({sid:lockSidGet(),ts:Date.now(),ver:(typeof APP_VER!=='undefined'?APP_VER:'?')})}catch(e){}};
+  beat();lockHbT=setInterval(beat,12000);
+}
+function lockApplyHeld(){lockHeld=true;lockDenied=false;lockOverlay(false);lockHbStart();try{cloudRefetch()}catch(e){}}
+function lockApplyDeny(){lockHeld=false;lockDenied=true;lockHbStop();lockOverlay(true);lockPollStart();}
+function lockAcquire(){
+  if(!CLOUD_OK||lockBusyLock())return;
+  lockRead(function(cur){
+    const o=lockParse(cur),now=Date.now(),sid=lockSidGet();
+    if(o&&o.sid!==sid&&(now-(+o.ts||0))<35000){lockApplyDeny();return}
+    setTimeout(function(){
+      lockRead(function(cur2){
+        const o2=lockParse(cur2);
+        if(o2&&o2.sid!==sid&&(Date.now()-(+o2.ts||0))<35000){lockApplyDeny();return}
+        lockWrite({sid:sid,ts:Date.now(),ver:(typeof APP_VER!=='undefined'?APP_VER:'?')});
+        lockApplyHeld();
+      });
+    },400+Math.random()*1200);
+  });
+}
+let _lockBusyFlag=false;
+function lockBusyLock(){if(_lockBusyFlag)return true;_lockBusyFlag=true;setTimeout(function(){_lockBusyFlag=false},3000);return false}
+function lockPollStart(){
+  try{clearInterval(lockPollT)}catch(e){}
+  lockPollT=setInterval(function(){
+    if(lockHeld||!CLOUD_OK)return;
+    lockAcquire();
+  },6000);
+}
+function lockWatch(){
+  if(!CLOUD_OK)return;
+  lockAcquire();
+  lockPollStart();
+}
+function lockRelease(){
+  if(!lockHeld||!CLOUD_OK)return;
+  lockHeld=false;lockHbStop();
+  lockRead(function(cur){
+    const o=lockParse(cur);
+    if(o&&o.sid===lockSidGet())lockWrite('');
+  });
+}
+function cloudRefetch(){
+  if(!CLOUD_OK)return;
+  try{
+    TG.CloudStorage.getItems([CLOUD_STATE_KEY,CLOUD_HIST_KEY],(err,res)=>{
+      if(err||!res)return;
+      try{
+        const coreRaw=res[CLOUD_STATE_KEY]?JSON.parse(res[CLOUD_STATE_KEY]):null;
+        const histRaw=res[CLOUD_HIST_KEY]?JSON.parse(res[CLOUD_HIST_KEY]):null;
+        if(!coreRaw)return;
+        const cloudState=Object.assign({},coreRaw,{hist:Array.isArray(histRaw)?histRaw:[]});
+        if((cloudState.savedAt||0)>(S.savedAt||0)){
+          applyLoadedState(cloudState);
+          writeLocal();
+          renderAll();
+        }
+      }catch(_){}
+    });
+  }catch(e){}
+}
+const DUEL_FB_CONFIG={apiKey:"AIzaSyBBe-vn7Uu63BDOVpxJy9xMSLwmRMEr0Ec",authDomain:"gaperabot.firebaseapp.com",databaseURL:"https://gaperabot-default-rtdb.firebaseio.com",projectId:"gaperabot"};
+let fbApp=null,fbDb=null;
+function duelFbReady(){
+  try{
+    if(fbDb)return true;
+    if(!window.firebase||!DUEL_FB_CONFIG||!DUEL_FB_CONFIG.apiKey)return false;
+    if(!fbApp)fbApp=firebase.initializeApp(DUEL_FB_CONFIG);
+    fbDb=firebase.database();
+    return !!fbDb;
+  }catch(e){return false}
+}
 function duelFbFind(mode,stake){
   if(!DU.searching)return;
   let rooms={};
@@ -4214,15 +4141,14 @@ function duelFbFind(mode,stake){
     else duelFbMakeRoom(mode,stake);
   }).catch(()=>{if(DU.searching)setTimeout(()=>{if(DU.searching)duelFbFind(mode,stake)},3000)});
 }
-// Занять место гостя транзакцией: кто успел - тот и сел, второго отшьёт
 function duelFbJoinRoom(id,mode,stake){
   const me=duelMe();
   fbDb.ref('gapera/rooms/'+id+'/guest').transaction(cur=>{
-    if(cur)return; // уже занято
+    if(cur)return;
     return {id:DU.sigId,name:me.name,ava:me.ava,ts:firebase.database.ServerValue.TIMESTAMP};
   },(err,committed)=>{
     if(!DU.searching)return;
-    if(err||!committed){duelFbFind(mode,stake);return} // стол увели - ищем дальше
+    if(err||!committed){duelFbFind(mode,stake);return}
     DU.roomId=id;DU.role='guest';DU.mode=mode;DU.myStake=stake;
     DU.opp={name:'?',ava:'?'};
     try{fbDb.ref('gapera/rooms/'+id).once('value').then(s=>{let r=null;try{r=s.val()}catch(e){}if(r&&r.host){DU.opp={name:String(r.host.name||'?').slice(0,14),ava:String(r.host.ava||'?').slice(0,2)}}duelRender()})}catch(e){}
@@ -4246,13 +4172,12 @@ function duelFbMakeRoom(mode,stake){
     if(DU.role!=='host'||DU.started||!DU.searching)return;
     let r=null;try{r=snap.val()}catch(e){}
     if(!r)return;
-    if(r.guest&&r.guest.id){ // гость пришёл - начинаем
+    if(r.guest&&r.guest.id){
       DU.opp={name:String(r.guest.name||'?').slice(0,14),ava:String(r.guest.ava||'?').slice(0,2)};
       duelFbEnter();
     }
   });
 }
-// Оба в сборе: поднимаем релейный канал, хост раздаёт
 function duelFbEnter(){
   DU.searching=false;
   DU.link='fb';DU.linked=true;DU.invested=0;DU.over=false;DU.winner=null;DU.fbHadGuest=false;
@@ -4266,7 +4191,6 @@ function duelFbEnter(){
     setTimeout(()=>{
       try{
         if(DU.role!=='host'||DU.link!=='fb'||DU.started)return;
-        // гость мог передумать в последнюю секунду - проверяем, что он на месте
         fbDb.ref('gapera/rooms/'+DU.roomId+'/guest').once('value').then(s=>{
           let g=null;try{g=s.val()}catch(e){}
           if(!g||!g.id){duelFindStatus(t('duel_searching'));duelRender();return}
@@ -4276,7 +4200,6 @@ function duelFbEnter(){
     },800);
   }
 }
-// Релей: исходящие - push в свою ветку, входящие - подписка на чужую
 function duelFbSend(o){
   if(!DU.roomId||!fbDb)return;
   const dir=DU.role==='host'?'host2guest':'guest2host';
@@ -4293,7 +4216,6 @@ function duelFbListen(){
   });
 }
 function duelFbUnlisten(){try{if(DU.fbMsgRef)DU.fbMsgRef.off()}catch(e){}DU.fbMsgRef=null;try{if(DU.fbRoomRef)DU.fbRoomRef.off()}catch(e){}DU.fbRoomRef=null}
-// Присутствие: heartbeat + слежка за соперником и комнатой
 function duelFbHeartbeat(){
   duelFbHbStop();
   if(!DU.roomId||!fbDb)return;
@@ -4310,13 +4232,13 @@ function duelFbWatch(){
   DU.fbWatchRef.on('value',(snap)=>{
     if(!DU.role||DU.link!=='fb')return;
     let r=undefined;try{r=snap.val()}catch(e){return}
-    if(r===null){duelSetStatus('dst_left');duelLeave(true);return} // комнату снесли - соперник ушёл
+    if(r===null){duelSetStatus('dst_left');duelLeave(true);return}
     if(!r)return;
     if(r.guest&&r.guest.id)DU.fbHadGuest=true;
-    else if(DU.role==='host'&&DU.started&&DU.fbHadGuest){duelOnClose(false);return} // гость слился из игры
+    else if(DU.role==='host'&&DU.started&&DU.fbHadGuest){duelOnClose(false);return}
     const opp=DU.role==='host'?'guest':'host';
     const last=+(r.hb&&r.hb[opp]||0);
-    if(DU.started&&last&&Date.now()-last>40000)duelOnClose(false); // зависший соперник
+    if(DU.started&&last&&Date.now()-last>40000)duelOnClose(false);
   });
 }
 function duelFbCleanup(){
@@ -4332,253 +4254,17 @@ function duelFbCleanup(){
   }catch(e){}
   DU.searching=false;DU.roomId=null;DU.role=null;DU.link=null;DU.fbHadGuest=false;
 }
-let lockSid=null,lockHeld=false,lockDenied=false,lockHbT=null;
-function lockPath(){const id=accountId();if(!id)return null;return 'gapera/lock/'+id}
-function lockSidGet(){
-  if(lockSid)return lockSid;
-  try{lockSid=sessionStorage.getItem('gapera_lock_sid')||''}catch(e){lockSid=''}
-  if(!lockSid){lockSid='s'+Math.random().toString(36).slice(2,12);try{sessionStorage.setItem('gapera_lock_sid',lockSid)}catch(e){}}
-  return lockSid;
-}
-function lockOverlay(on){try{const e=$('lockOverlay');if(e)e.style.display=on?'grid':'none'}catch(e2){}try{const m=$('lockMeLbl');if(m)m.textContent='ID: '+(accountId()||'guest')}catch(e3){}}
-function lockHbStart(){
-  lockHbStop();
-  const p=lockPath();if(!p)return;
-  const beat=()=>{try{if(lockHeld)fbDb.ref(p).set({sid:lockSidGet(),ts:fbNow()})}catch(e){}};
-  beat();lockHbT=setInterval(beat,10000);
-  try{fbDb.ref(p).onDisconnect().remove()}catch(e){}
-}
-function lockHbStop(){try{clearInterval(lockHbT)}catch(e){}lockHbT=null}
-function fbPullAll(){try{fbPullSave()}catch(e){}try{fbStarsPull()}catch(e){}}
-function lockAcquire(){
-  if(!duelFbReady())return;
-  const p=lockPath();if(!p)return;
-  const sid=lockSidGet();
-  fbDb.ref(p).transaction(cur=>{
-    if(!cur)return {sid:sid,ts:fbNow()};
-    if(cur.sid===sid)return {sid:sid,ts:fbNow()};
-    if((fbNow()-(+cur.ts||0))>40000)return {sid:sid,ts:fbNow()};
-  },(err,ok,snap)=>{
-    let v=null;try{v=snap?snap.val():null}catch(e){}
-    if(ok&&v&&v.sid===lockSidGet()){lockHeld=true;lockDenied=false;lockOverlay(false);lockHbStart();fbPullAll()}
-    else{lockHeld=false;lockDenied=true;lockHbStop();lockOverlay(true)}
-  });
-}
-function lockWatch(){
-  const p=lockPath();if(!p||!duelFbReady())return;
-  try{
-    fbDb.ref(p).on('value',snap=>{
-      let v=null;try{v=snap.val()}catch(e){return}
-      const sid=lockSidGet();
-      if(v&&v.sid===sid){if(!lockHeld){lockHeld=true;lockDenied=false;lockOverlay(false);lockHbStart();fbPullAll()}return}
-      if(!v){lockHeld=false;lockAcquire();return}
-      lockHeld=false;lockDenied=true;lockHbStop();lockOverlay(true);
-    });
-  }catch(e){}
-}
-let presenceT=null;
-function presenceStart(){
-  try{clearInterval(presenceT)}catch(e){}
-  if(!duelFbReady())return;
-  const id=accountId();if(!id)return;
-  let ref=null;
-  try{ref=fbDb.ref('gapera/online/'+id+'/'+lockSidGet())}catch(e){return}
-  const beat=()=>{try{ref.set({ts:fbNow(),ver:(typeof APP_VER!=='undefined'?APP_VER:'?')})}catch(e){}};
-  beat();
-  presenceT=setInterval(beat,20000);
-  try{ref.onDisconnect().remove()}catch(e){}
-}
 function duelNetOK(){return duelFbReady()}
-function duelCreate(){
-  try{Sound.click()}catch(e){}
-  if(!duelNetOK()){duelSetStatus('dst_err');return}
-  duelLeave(true);
-  DU.role='host';DU.opp={name:'?',ava:'?'};
-  DU.sigId='p'+Math.random().toString(36).slice(2,10);
-  DU.code=duelCode();
-  DU.pc=null;DU.pcAt=0;
-  duelSetStatus('dst_joining');duelRender();
-  duelMqttEnsure((client)=>{
-    if(DU.role!=='host')return;
-    if(!client){duelSetStatus('dst_err');duelRender();return}
-    try{client.subscribe(duelSigTopic(DU.code))}catch(e){}
-    const cb=$('duelCode');if(cb)cb.value=DU.code;
-    duelSetStatus('dst_wait',{c:DU.code});duelRender();
-  });
-  duelRender();
-}
-function duelJoin(){
-  try{Sound.click()}catch(e){}
-  if(!duelNetOK()){duelSetStatus('dst_err');return}
-  const code=String(($('duelCode')||{value:''}).value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
-  if(code.length<4){sn(t('dst_code_err'));return}
-  duelLeave(true);
-  DU.role='guest';DU.code=code;DU.opp={name:'?',ava:'?'};
-  DU.sigId='p'+Math.random().toString(36).slice(2,10);DU.pc=null;DU.pcAt=0;
-  DU.joinSeq=(DU.joinSeq||0)+1;
-  duelJoinAttempt(DU.joinSeq,1);
-  duelRender();
-}
-// Вход с ретраями: мобильные сети и строгие Wi-Fi часто роняют первую попытку
-// (сигналинг не успел, ICE не собрался). Каждую попытку создаём пир заново,
-// пауза растёт экспоненциально. joinSeq отменяет устаревшие попытки.
-// ===== Прямое соединение: MQTT-сигналинг + raw WebRTC DataChannel =====
-// Никакого PeerJS-облака и своего ПК: телефоны знакомятся через бесплатный
-// публичный MQTT-брокер (без регистрации), дальше говорят НАПРЯМУ peer-to-peer
-// по зашифрованному DataChannel. Через брокер летят только offer/answer,
-// сама игра через него не идёт.
-const DUEL_MQTT_BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt','wss://test.mosquitto.org:8081/mqtt'];
-function duelSigTopic(code){return 'gapera/duel/v1/'+code}
-function duelRtcConfig(){try{const c=duelPeerOpts().config;if(c&&c.iceServers)return c}catch(e){}return{iceServers:[]}}
-function duelMqttPub(kind,obj){
-  if(!DU.mqtt||!DU.code)return;
-  try{DU.mqtt.publish(duelSigTopic(DU.code),JSON.stringify(Object.assign({from:DU.sigId,kind:kind},obj||{})))}catch(e){}
-}
 // Подключение к брокеру с перебором запасных
-function duelMqttEnsure(cb){
-  if(DU.mqtt){cb(DU.mqtt);return}
-  let i=0;
-  const step=()=>{
-    if(i>=DUEL_MQTT_BROKERS.length){cb(null);return}
-    const url=DUEL_MQTT_BROKERS[i++];
-    let client=null;
-    try{client=window.mqtt.connect(url,{connectTimeout:9000,reconnectPeriod:0,clean:true,clientId:'gapera_'+Math.random().toString(36).slice(2,10)})}catch(e){step();return}
-    let done=false;
-    const to=setTimeout(()=>{if(done)return;done=true;try{client.end(true)}catch(e){}step()},12000);
-    client.on('connect',()=>{if(done)return;done=true;clearTimeout(to);DU.mqtt=client;try{client.on('message',(tp,pl)=>duelSigMsg(pl))}catch(e){}cb(client)});
-    client.on('error',()=>{if(done)return;done=true;clearTimeout(to);try{client.end(true)}catch(e){}step()});
-  };
-  step();
-}
-// Обёртка native DataChannel под duelWire/duelSend (on/send/open/close)
-function duelNativeConn(pc,dc){
-  const handlers={};
-  const api={open:false,
-    send(o){try{dc.send(JSON.stringify(o))}catch(e){}},
-    on(ev,cb){(handlers[ev]=handlers[ev]||[]).push(cb)},
-    close(){try{dc.close()}catch(e){}try{pc.close()}catch(e){}}
-  };
-  const fire=(ev,a)=>{(handlers[ev]||[]).forEach(cb=>{try{cb(a)}catch(e){}})};
-  dc.onopen=()=>{api.open=true;fire('open')};
-  dc.onmessage=(ev)=>{try{fire('data',JSON.parse(ev.data))}catch(e){}};
-  dc.onclose=()=>fire('close');
-  dc.onerror=()=>fire('error',{type:'dc'});
-  try{pc.onconnectionstatechange=()=>{try{if(pc.connectionState==='failed')fire('error',{type:'network'})}catch(e){}}}catch(e){}
-  return api;
-}
-function duelWaitGathering(pc,cb){
-  if(!pc||pc.iceGatheringState==='complete'){cb();return}
-  let done=false;
-  const fin=()=>{if(done)return;done=true;cb()};
-  const onCh=()=>{try{if(pc.iceGatheringState==='complete')fin()}catch(e){}};
-  try{pc.addEventListener('icegatheringstatechange',onCh)}catch(e){}
-  setTimeout(fin,8000); // не ждём вечно - шлём что собрали
-}
-function duelPcStuck(){return DU.pc&&!DU.linked&&(Date.now()-(DU.pcAt||0)>15000)}
-function duelPcReset(){try{if(DU.pc)DU.pc.close()}catch(e){}DU.pc=null;DU.pcAt=0}
-// Хост: на join гостя отвечает welcome и делает offer
-function duelHostOffer(){
-  try{
-    const pc=new RTCPeerConnection(duelRtcConfig());
-    DU.pc=pc;DU.pcAt=Date.now();
-    const dc=pc.createDataChannel('gapera');
-    duelWire(duelNativeConn(pc,dc));
-    pc.createOffer().then(o=>pc.setLocalDescription(o)).then(()=>{
-      duelWaitGathering(pc,()=>{duelMqttPub('offer',{sdp:pc.localDescription})});
-    }).catch(()=>duelSetStatus('dst_err'));
-  }catch(e){duelSetStatus('dst_err')}
-}
-// Гость: на offer отвечает answer
-function duelGuestAnswer(offer){
-  try{
-    const pc=new RTCPeerConnection(duelRtcConfig());
-    DU.pc=pc;DU.pcAt=Date.now();
-    pc.ondatachannel=(ev)=>{duelWire(duelNativeConn(pc,ev.channel))};
-    pc.setRemoteDescription(new RTCSessionDescription(offer))
-      .then(()=>pc.createAnswer()).then(a=>pc.setLocalDescription(a))
-      .then(()=>{duelWaitGathering(pc,()=>{duelMqttPub('answer',{sdp:pc.localDescription})})})
-      .catch(()=>duelSetStatus('dst_err'));
-  }catch(e){duelSetStatus('dst_err')}
-}
-function duelSigMsg(raw){
-  let d=null;try{d=JSON.parse(String(raw||''))}catch(e){return}
-  if(!d||d.from===DU.sigId||typeof d.kind!=='string')return;
-  if(DU.role==='host'&&d.kind==='join'&&!DU.started){
-    if(DU.linked)return;
-    if(DU.pc&&!duelPcStuck())return; // уже ведём handshake
-    if(DU.pc)duelPcReset(); // зависший handshake - начинаем заново
-    DU.opp={name:String(d.name||'?').slice(0,14),ava:String(d.ava||'?').slice(0,2)};
-    duelSetStatus('dst_conn');duelRender();
-    const me=duelMe();
-    duelMqttPub('welcome',{name:me.name,ava:me.ava});
-    duelHostOffer();
-    return;
-  }
-  if(DU.role==='guest'){
-    if(d.kind==='welcome'){duelSetStatus('dst_joining');duelRender();return}
-    if(d.kind==='offer'&&d.sdp&&!DU.linked){
-      if(DU.pc&&!duelPcStuck())return;
-      if(DU.pc)duelPcReset();
-      duelSetStatus('dst_joining');duelRender();
-      duelGuestAnswer(d.sdp);return;
-    }
-  }
-  if(DU.role==='host'&&d.kind==='answer'&&d.sdp&&DU.pc){
-    try{DU.pc.setRemoteDescription(new RTCSessionDescription(d.sdp))}catch(e){}
-    return;
-  }
-}
-function duelJoinAttempt(seq,tryNo){
-  if(seq!==DU.joinSeq||DU.role!=='guest')return;
-  if(tryNo>5){duelLeave(true);duelSetStatus('dst_timeout');return}
-  // Стол найден - дальше ждём offer; нет - шлём join снова (это дешево)
-  duelSetStatus(tryNo<=1?'dst_joining':'dst_retry',{n:tryNo});
-  duelRender();
-  duelMqttEnsure((client)=>{
-    if(seq!==DU.joinSeq||DU.role!=='guest')return;
-    if(!client){setTimeout(()=>duelJoinAttempt(seq,tryNo+1),2500);return}
-    try{client.subscribe(duelSigTopic(DU.code))}catch(e){}
-    const me=duelMe();
-    duelMqttPub('join',{name:me.name,ava:me.ava});
-    setTimeout(()=>{
-      if(seq!==DU.joinSeq||DU.role!=='guest'||DU.linked||DU.started)return;
-      duelJoinAttempt(seq,tryNo+1);
-    },8000);
-  });
-}
-function duelInvite(){
-  try{Sound.click()}catch(e){}
-  const T=(typeof t==='function')?t:function(k,p){return k};
-  const c=DU.code||String(($('duelCode')||{value:''}).value||'').trim().toUpperCase();
-  if(!c){sn(T('dst_code_err'));return}
-  const msg=T('dst_invite',{c:c});
-  const link='https://t.me/'+DUEL_BOT+'/app?startapp=duel_'+c;
-  const share='https://t.me/share/url?url='+encodeURIComponent(link)+'&text='+encodeURIComponent(msg);
-  try{
-    if(TG&&typeof TG.openTelegramLink==='function')TG.openTelegramLink(share);
-    else if(typeof window.open==='function')window.open(share,'_blank');
-  }catch(e){try{if(typeof window.open==='function')window.open(share,'_blank')}catch(_){}}
-}
-function duelCopy(){
-  try{Sound.click()}catch(e){}
-  const c=DU.code||String(($('duelCode')||{value:''}).value||'').trim();
-  if(!c)return;
-  try{
-    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(c);sn(t('dst_copied'))}
-    else{sn(c)}
-  }catch(e){sn(c)}
-}
 function duelOnClose(mine){
   const had=!!(DU.conn||DU.role||DU.started);
   if(!had&&mine!==true)return;
   if(DU.started&&!DU.over){S.bal+=(DU.invested||0);save();try{rBal()}catch(e){}}
   try{if(DU.conn)DU.conn.close()}catch(e){}
   try{if(DU.peer)DU.peer.destroy()}catch(e){}
-  DU.conn=null;DU.peer=null;DU.role=null;DU.code='';DU.started=false;DU.over=true;DU.winner=null;
+  DU.conn=null;DU.peer=null;DU.role=null;DU.code='';DU.started=false;DU.over=true;DU.winner=null;DU.waitGuest=false;
   duelHbStop();
   try{duelFbCleanup()}catch(e){}
-  try{if(DU.mqtt)DU.mqtt.end(true)}catch(e){}
-  DU.mqtt=null;DU.pc=null;DU.pcAt=0;
   DU.linked=false;DU.chat=[];DU.myReady=false;DU.oppReady=false;
   duelResetTables();duelChatRender();
   duelSetStatus(mine===true?'dst_idle':'dst_left');
@@ -4620,10 +4306,6 @@ try{
     DU.mode=b.dataset.m||'bac';
     duelRender();
   }));
-  const _dc=$('duelCreate');if(_dc)_dc.addEventListener('click',duelCreate);
-  const _dj=$('duelJoin');if(_dj)_dj.addEventListener('click',duelJoin);
-  const _dcp=$('duelCopy');if(_dcp)_dcp.addEventListener('click',duelCopy);
-  const _di=$('duelInvite');if(_di)_di.addEventListener('click',duelInvite);
   const _dl=$('duelLeave');if(_dl)_dl.addEventListener('click',function(){try{Sound.click()}catch(e){}duelLeave(true)});
   const _da=$('duelAgain');if(_da)_da.addEventListener('click',duelAgain);
   document.querySelectorAll('#bacPicks button').forEach(b=>b.addEventListener('click',()=>bacChoose(b.dataset.p)));
@@ -4673,18 +4355,6 @@ try{
   try{duelSrvRenderCur()}catch(e){}
   duelNav();
   duelSetStatus('dst_idle');duelRender();
-  try{
-    let code='';
-    if(location.hash&&location.hash.indexOf('#duel=')===0)code=location.hash.slice(6);
-    try{if(TG&&TG.initDataUnsafe&&TG.initDataUnsafe.start_param){const sp=String(TG.initDataUnsafe.start_param);if(sp.indexOf('duel_')===0)code=sp.slice(5)}}catch(e){}
-    code=String(code||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-    if(code&&typeof DUELS_VISIBLE!=='undefined'&&DUELS_VISIBLE){
-      const ci=$('duelCode');if(ci)ci.value=code;
-      duelNav();
-      const nb=document.querySelector('.ni[data-s="duel"]');if(nb)nb.click();
-      setTimeout(function(){try{if(!DU.role)duelJoin()}catch(e){}},900);
-    }
-  }catch(e){}
 }catch(e){}
 try{applyI18n()}catch(e){}
 rBal();
